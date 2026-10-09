@@ -1,8 +1,11 @@
 from resources.app.models.boot_event import BootEvent
+from resources.app.models.boot_file import BootFile
 from resources.app.models.cluster import Cluster
 from resources.app.models.login_attempt import LoginAttempt
 from resources.app.models.node import Node
+from resources.app.models.rejected_node import RejectedNode
 from resources.app.models.setting import Setting
+from resources.app.models.storage import Storage
 from resources.app.models.user import User
 from resources.app.models.user_session import UserSession
 
@@ -13,5 +16,8 @@ __all__ = [
     "Cluster",
     "Node",
     "BootEvent",
+    "BootFile",
+    "RejectedNode",
     "Setting",
+    "Storage",
 ]

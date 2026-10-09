@@ -88,5 +88,45 @@
             </div>
         </section>
     </div>
+
+    <section class="mt-6 rounded-xl border border-slate-800 bg-slate-900/50">
+        <div class="border-b border-slate-800 px-5 py-3">
+            <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-hard-drive mr-2 text-brand-400"></i>Storage for this cluster</h2>
+        </div>
+        <form hx-post="{{ url_for('clusters.storage', cluster_id=cluster.id) }}" hx-swap="none"
+              method="post" action="{{ url_for('clusters.storage', cluster_id=cluster.id) }}"
+              class="p-5">
+            <input type="hidden" name="_token" value="{{ csrf_token() }}">
+            <p class="mb-4 text-xs text-slate-500">Applied to every node in this cluster during provisioning.</p>
+            {% if storages %}
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {% for storage in storages %}
+                <label class="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm">
+                    <input type="checkbox" name="storage_ids" value="{{ storage.id }}"
+                           {{ 'checked' if storage.id in assigned_storage_ids else '' }}
+                           class="h-4 w-4 rounded border-slate-700 bg-slate-900 text-brand-600">
+                    <span class="min-w-0 flex-1">
+                        <span class="block font-medium text-slate-200">{{ storage.storage_id }}</span>
+                        <span class="block truncate font-mono text-xs text-slate-500">{{ storage.server }}:{{ storage.export }}</span>
+                    </span>
+                    {% if storage.reachable %}
+                    <i class="fa-solid fa-circle-check text-emerald-400" title="reachable"></i>
+                    {% else %}
+                    <i class="fa-solid fa-circle-xmark text-rose-400" title="unreachable"></i>
+                    {% endif %}
+                </label>
+                {% endfor %}
+            </div>
+            <div class="mt-4 flex justify-end">
+                <button type="submit"
+                        class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
+                    <i class="fa-solid fa-floppy-disk"></i><span>Save storage</span>
+                </button>
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-500">No storage configured yet. Add one under <span class="text-slate-300">Storage</span>.</p>
+            {% endif %}
+        </form>
+    </section>
 </div>
 {% endblock %}

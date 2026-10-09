@@ -38,8 +38,14 @@ class ViewFactory:
             return self.router.url_for(name, **values)
 
         def asset(path: str) -> str:
+            # Served from APP_URL. Relative only if APP_URL is unset.
             clean = path.lstrip("/")
-            return f"{self.config.url}/static/{clean}"
+            base = self.config.url
+            return f"{base}/static/{clean}" if base else f"/static/{clean}"
+
+        def base_url() -> str:
+            """Public base URL (APP_URL)."""
+            return self.config.url
 
         def old(key: str, default: Any = "") -> Any:
             ctx = current()
@@ -66,6 +72,7 @@ class ViewFactory:
             {
                 "app_name": self.config.name,
                 "app_url": self.config.url,
+                "base_url": base_url,
                 "config": self.config,
                 "url_for": url_for,
                 "asset": asset,

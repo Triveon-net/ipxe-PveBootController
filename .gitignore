@@ -5,6 +5,7 @@ database/sql.db-wal
 database/sql.db-shm
 *.pem
 .env
+storage/
 .venv/
 venv/
 env/

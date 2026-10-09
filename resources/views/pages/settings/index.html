@@ -13,21 +13,14 @@
         <input type="hidden" name="_token" value="{{ csrf_token() }}">
 
         <section class="space-y-4">
-            <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-network-wired mr-2 text-brand-400"></i>PXE / Netboot</h2>
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                    <label class="mb-1 block text-sm text-slate-400" for="nextserver">Next server (DHCP option 66)</label>
-                    <input id="nextserver" name="pxe.next_server" value="{{ settings['pxe.next_server'] }}"
-                           placeholder="10.0.0.5"
-                           class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 outline-none focus:border-brand-500">
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm text-slate-400" for="bootfile">Boot filename (option 67)</label>
-                    <input id="bootfile" name="pxe.boot_file" value="{{ settings['pxe.boot_file'] }}"
-                           placeholder="boot.ipxe"
-                           class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-sm text-slate-100 outline-none focus:border-brand-500">
-                </div>
-            </div>
+            <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-bolt mr-2 text-brand-400"></i>PXE / Netboot</h2>
+            <p class="text-sm text-slate-400">
+                The iPXE boot script and all netboot options (next-server, boot file,
+                static IPs, kernel, chain URL, custom lines, ...) are configured on the
+                <a href="{{ url_for('boot.index') }}"
+                   hx-get="{{ url_for('boot.index') }}" hx-target="#app-content" hx-push-url="true"
+                   class="font-medium text-brand-400 hover:text-brand-300">Boot tab</a>.
+            </p>
         </section>
 
         <section class="space-y-4 border-t border-slate-800 pt-6">

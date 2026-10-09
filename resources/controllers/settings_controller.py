@@ -8,9 +8,9 @@ from resources.app.models.setting import Setting
 from resources.controllers.controller import Controller, is_htmx
 
 # Only these keys may be written through the panel, each with its own rules.
+# PXE/boot options are managed on the dedicated Boot tab (settings key
+# `pxe.boot_config`), not here.
 SETTING_RULES = {
-    "pxe.next_server": "required|ipv4",
-    "pxe.boot_file": "required|string|max:128",
     "cluster.default_quorum": "required|integer|min:1|max:64",
     "api.token": "nullable|string|max:255",
 }

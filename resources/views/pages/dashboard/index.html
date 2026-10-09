@@ -16,11 +16,12 @@
         </a>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {{ stat_card('Total nodes', stats.nodes, 'fa-server', 'brand') }}
         {{ stat_card('Configured', stats.configured, 'fa-circle-check', 'emerald') }}
         {{ stat_card('Pending', stats.pending, 'fa-hourglass-half', 'amber') }}
         {{ stat_card('Clusters', stats.clusters, 'fa-circle-nodes', 'sky') }}
+        {{ stat_card('Unregistered', stats.unregistered, 'fa-triangle-exclamation', 'rose') }}
     </div>
 
     <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -52,19 +53,29 @@
         </section>
 
         <section class="rounded-xl border border-slate-800 bg-slate-900/50">
-            <div class="border-b border-slate-800 px-5 py-3">
+            <div class="flex items-center justify-between border-b border-slate-800 px-5 py-3">
                 <h2 class="text-sm font-medium text-slate-300">Recent boot reports</h2>
+                <a href="{{ url_for('nodes.pending') }}" hx-get="{{ url_for('nodes.pending') }}"
+                   hx-target="#app-content" hx-push-url="true"
+                   class="text-xs text-brand-400 hover:text-brand-300">
+                    Pending{% if stats.unregistered %} ({{ stats.unregistered }}){% endif %}
+                </a>
             </div>
             {% if recent_events %}
             <ul class="divide-y divide-slate-800">
                 {% for event in recent_events %}
                 <li class="px-5 py-3">
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between gap-3">
                         <span class="font-mono text-xs text-slate-300">{{ event.mac_address }}</span>
                         {% if event.node_id %}
                         <span class="text-xs text-emerald-300">known</span>
                         {% else %}
-                        <span class="text-xs text-amber-300">unregistered</span>
+                        <a href="{{ url_for('nodes.create') }}?mac={{ event.mac_address }}"
+                           hx-get="{{ url_for('nodes.create') }}?mac={{ event.mac_address }}"
+                           hx-target="#app-content" hx-push-url="true"
+                           class="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-brand-500">
+                            <i class="fa-solid fa-plus"></i>Create
+                        </a>
                         {% endif %}
                     </div>
                     <div class="mt-1 text-xs text-slate-500">

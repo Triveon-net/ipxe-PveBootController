@@ -13,6 +13,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Iterator
+from urllib.parse import urlsplit
 
 from werkzeug.routing import Map, MapAdapter, Rule, RequestRedirect
 
@@ -54,13 +55,20 @@ class _RouteBuilder:
 
 
 class Router:
-    def __init__(self) -> None:
+    def __init__(self, base_url: str = "http://127.0.0.1") -> None:
         self._map = Map()
         self._routes: dict[str, Route] = {}
         self._names: dict[str, str] = {}
         self._counter = 0
         self._stack: list[tuple[str, tuple[str, ...], bool]] = []
+        # Host/scheme from APP_URL, used only for absolute URLs (see url_for).
+        self._host, self._scheme = self._split_base(base_url)
         self._adapter: MapAdapter | None = None
+
+    @staticmethod
+    def _split_base(base_url: str) -> tuple[str, str]:
+        parts = urlsplit(base_url if "://" in (base_url or "") else f"http://{base_url}")
+        return (parts.netloc or "127.0.0.1"), (parts.scheme or "http")
 
     # -- grouping -----------------------------------------------------------
     @contextmanager
@@ -150,16 +158,20 @@ class Router:
         route = self._routes.get(endpoint)
         if route is None:
             raise NotFound()
-        return route, values
+        return route, dict(values)
 
     def routes(self) -> list[Route]:
         return list(self._routes.values())
 
     # -- URL generation -----------------------------------------------------
-    def url_for(self, name: str, **values) -> str:
+    def url_for(self, name: str, absolute: bool = False, **values) -> str:
         endpoint = self._names.get(name)
         if endpoint is None:
             raise KeyError(f"Unknown route name: {name}")
         if self._adapter is None:
-            self._adapter = self._map.bind("localhost")
-        return self._adapter.build(endpoint, values, append_unknown=False)
+            self._adapter = self._map.bind(self._host, url_scheme=self._scheme)
+        # Relative paths by default, so links always follow the host the
+        # browser is on. Pass absolute=True for a full URL built from APP_URL.
+        return self._adapter.build(
+            endpoint, values, append_unknown=False, force_external=absolute
+        )

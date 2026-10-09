@@ -11,6 +11,7 @@ from core.exceptions import ValidationException
 from core.support import now_iso
 from resources.app.models.boot_event import BootEvent
 from resources.app.models.node import Node
+from resources.app.models.rejected_node import RejectedNode
 from resources.controllers.controller import Controller
 
 REPORT_RULES = {
@@ -34,6 +35,18 @@ class BootApiController(Controller):
             return self.json({"error": exc.message, "errors": exc.errors}, status=422)
 
         mac = data["mac_address"]
+
+        if RejectedNode.exists(mac):
+            return self.json(
+                {
+                    "registered": False,
+                    "rejected": True,
+                    "message": "This node was rejected by the operator.",
+                    "mac_address": mac,
+                },
+                status=202,
+            )
+
         node = Node.find_by_mac(mac)
 
         BootEvent.create(
@@ -126,6 +139,16 @@ class BootApiController(Controller):
             "network": node.get("network_config", {}),
             "storage": node.get("storage_config", []),
             "vms": node.get("vm_config", []),
+            "storages": [
+                {
+                    "id": s.storage_id,
+                    "kind": s.kind,
+                    "server": s.server,
+                    "export": s.export,
+                    "reachable": bool(s.reachable),
+                }
+                for s in node.effective_storages()
+            ],
             "cluster": cluster_payload,
             "corosync_node_id": node.corosync_node_id,
             "corosync_conf": corosync_conf,

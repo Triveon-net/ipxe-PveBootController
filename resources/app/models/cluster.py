@@ -19,3 +19,9 @@ class Cluster(Model):
         from resources.app.models.node import Node
 
         return Node.where("cluster_id", self.id).count()
+
+    def storages(self):
+        """Storages assigned to this whole cluster."""
+        from resources.app.models.storage import Storage
+
+        return Storage.for_cluster(self.id)

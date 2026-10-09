@@ -20,3 +20,11 @@ def register(router) -> None:
     # iPXE boot script (served to booting machines, no token required).
     with router.group(is_api=True):
         router.get("/boot.ipxe", "BootScriptController@ipxe").name("boot.ipxe")
+        router.get("/agent/pve-report.sh", "AgentScriptController@report").name("agent.report")
+        router.get("/agent/pve-agent.py", "AgentScriptController@python").name("agent.python")
+        router.get("/agent/pve-agent.service", "AgentScriptController@service").name(
+            "agent.service"
+        )
+        router.get("/agent/pve-agent.conf", "AgentScriptController@conf").name("agent.conf")
+        router.get("/agent/install.sh", "AgentScriptController@install").name("agent.install")
+        router.get("/bootfiles/<path:name>", "BootFilesController@serve").name("bootfiles.serve")

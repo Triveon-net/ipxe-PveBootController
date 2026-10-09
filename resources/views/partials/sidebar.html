@@ -23,7 +23,9 @@
     <nav class="flex-1 space-y-1 px-3 py-4">
         {{ nav('Dashboard', url_for('dashboard'), 'fa-gauge-high', 'dashboard') }}
         {{ nav('Nodes', url_for('nodes.index'), 'fa-server', 'nodes') }}
+        {{ nav('Storage', url_for('storage.index'), 'fa-hard-drive', 'storage') }}
         {{ nav('Clusters', url_for('clusters.index'), 'fa-circle-nodes', 'clusters') }}
+        {{ nav('Boot', url_for('boot.index'), 'fa-bolt', 'boot') }}
         {{ nav('Settings', url_for('settings.index'), 'fa-sliders', 'settings') }}
     </nav>
 

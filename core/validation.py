@@ -15,6 +15,7 @@ Returns a dict of cleaned, type-cast values and raises `ValidationException`
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Mapping
 
 from core.exceptions import ValidationException
@@ -124,10 +125,30 @@ class ValidatorEngine:
             return Strict.ipv4_netmask(value)
         if name == "hostname":
             return Strict.hostname(value)
+        if name == "cluster_name":
+            return Strict.cluster_name(value)
         if name == "username":
             return Strict.username(value)
         if name == "vlan":
             return Strict.vlan(value)
+        if name == "storage_id":
+            if not re.match(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$", str(value)):
+                raise ValidationError(
+                    "Storage ID must start with a letter and contain only letters, digits, dot, dash, underscore."
+                )
+            return str(value)
+        if name == "host_or_ip":
+            try:
+                return Strict.ipv4(value)
+            except ValidationError:
+                return Strict.hostname(value)
+        if name == "export_path":
+            text = str(value)
+            if not text.startswith("/") or ".." in text or not re.match(
+                r"^/[A-Za-z0-9._/-]*$", text
+            ):
+                raise ValidationError("Export must be an absolute path, e.g. /mnt/data.")
+            return text
         if name == "json":
             if isinstance(value, (dict, list)):
                 return value

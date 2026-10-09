@@ -1,7 +1,13 @@
-# iPXE-PveController - runtime dependencies
-# WSGI toolkit (HTTP request/response, routing primitives, secure cookies)
+# iPXE-PveController - Python runtime dependencies
+#
+# Only two third-party packages are required; everything else is Python
+# standard library (sqlite3, hashlib/scrypt, secrets, socket, subprocess,
+# contextvars, importlib, ...). See apt.list for the system packages.
+#
+#   Werkzeug - WSGI toolkit used by the framework core
+#              (HTTP, routing, request/response, dev server)
+#   Jinja2   - template engine with autoescaping (XSS protection)
+#
+# Jinja2 pulls in MarkupSafe automatically.
 Werkzeug>=3.0
-# Template engine with autoescaping (XSS protection by default)
 Jinja2>=3.1
-# Signed/secure token helpers
-itsdangerous>=2.1

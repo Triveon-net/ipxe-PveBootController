@@ -1,0 +1,103 @@
+{% from 'partials/ui.html' import empty_state %}
+{% extends layout %}
+{% block title %}Pending nodes{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl">
+    <div class="mb-6">
+        <a href="{{ url_for('nodes.index') }}"
+           hx-get="{{ url_for('nodes.index') }}" hx-target="#app-content" hx-push-url="true"
+           class="text-xs text-slate-500 hover:text-slate-300"><i class="fa-solid fa-arrow-left mr-1"></i>Nodes</a>
+        <h1 id="page-title" class="mt-2 text-2xl font-semibold tracking-tight text-slate-100">Pending nodes</h1>
+        <p class="mt-1 text-sm text-slate-500">
+            Machines that booted and reported their hardware but are not configured yet.
+            Create a node to provision them, or reject a machine you don't want.
+        </p>
+    </div>
+
+    {% if pending %}
+    <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-5 py-3 font-medium">MAC address</th>
+                    <th class="px-5 py-3 font-medium">Reported IP</th>
+                    <th class="px-5 py-3 font-medium">CPU</th>
+                    <th class="px-5 py-3 font-medium">RAM</th>
+                    <th class="px-5 py-3 font-medium">Last seen</th>
+                    <th class="px-5 py-3 text-right font-medium">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for item in pending %}
+                <tr class="transition hover:bg-slate-800/30">
+                    <td class="px-5 py-3 font-mono text-xs text-slate-300">{{ item.mac_address }}</td>
+                    <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ item.ip_address or '—' }}</td>
+                    <td class="px-5 py-3 text-slate-400">
+                        {{ item.cpu_model or '—' }}
+                        {% if item.cpu_count %}<span class="text-slate-600"> · {{ item.cpu_count }} vCPU</span>{% endif %}
+                    </td>
+                    <td class="px-5 py-3 text-slate-400">{{ (item.ram_gb ~ ' GB') if item.ram_gb else '—' }}</td>
+                    <td class="px-5 py-3 text-xs text-slate-500">{{ item.created_at|datetime }}</td>
+                    <td class="px-5 py-3">
+                        <div class="flex items-center justify-end gap-1">
+                            <a href="{{ url_for('nodes.create') }}?mac={{ item.mac_address }}"
+                               hx-get="{{ url_for('nodes.create') }}?mac={{ item.mac_address }}"
+                               hx-target="#app-content" hx-push-url="true"
+                               class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand-500">
+                                <i class="fa-solid fa-plus"></i><span>Create</span>
+                            </a>
+                            <button type="button"
+                                    hx-post="{{ url_for('nodes.reject', mac=item.mac_address) }}"
+                                    hx-swap="none"
+                                    hx-confirm="Reject {{ item.mac_address }}? It will no longer appear here."
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-rose-500/40 hover:text-rose-300">
+                                <i class="fa-solid fa-ban"></i><span>Reject</span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    {{ empty_state('fa-satellite-dish', 'Nothing pending',
+       'When an unknown machine boots and reports to the API, it will show up here.') }}
+    {% endif %}
+
+    {% if rejected %}
+    <details class="mt-6 rounded-xl border border-slate-800 bg-slate-900/50">
+        <summary class="cursor-pointer px-5 py-3 text-sm font-medium text-slate-300">
+            Rejected machines ({{ rejected|length }})
+        </summary>
+        <table class="w-full text-left text-sm">
+            <thead class="border-t border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-5 py-3 font-medium">MAC address</th>
+                    <th class="px-5 py-3 font-medium">Reason</th>
+                    <th class="px-5 py-3 font-medium">Rejected</th>
+                    <th class="px-5 py-3 text-right font-medium">Action</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for item in rejected %}
+                <tr class="transition hover:bg-slate-800/30">
+                    <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ item.mac_address }}</td>
+                    <td class="px-5 py-3 text-slate-500">{{ item.reason or '—' }}</td>
+                    <td class="px-5 py-3 text-xs text-slate-500">{{ item.created_at|datetime }}</td>
+                    <td class="px-5 py-3 text-right">
+                        <button type="button"
+                                hx-post="{{ url_for('nodes.unreject', mac=item.mac_address) }}"
+                                hx-swap="none"
+                                class="inline-flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-700 hover:text-slate-100">
+                            <i class="fa-solid fa-rotate-left"></i><span>Restore</span>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+</div>
+{% endblock %}

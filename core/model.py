@@ -9,18 +9,20 @@ Design goals:
 from __future__ import annotations
 
 import json
-from typing import Any, Iterable, Mapping
+from typing import Any, Generic, Iterable, Mapping, TypeVar
 
 from database import get_db
 from database.database import quote_identifier
+
+M = TypeVar("M", bound="Model")
 
 _ALLOWED_OPERATORS = {
     "=", "!=", "<>", "<", "<=", ">", ">=", "LIKE", "NOT LIKE", "IS", "IS NOT",
 }
 
 
-class QueryBuilder:
-    def __init__(self, model_cls: type["Model"]) -> None:
+class QueryBuilder(Generic[M]):
+    def __init__(self, model_cls: type[M]) -> None:
         self.model_cls = model_cls
         self.db = model_cls.db()
         self._wheres: list[tuple[str, list[Any]]] = []
@@ -92,11 +94,11 @@ class QueryBuilder:
         return sql, params
 
     # -- read ---------------------------------------------------------------
-    def get(self) -> list["Model"]:
+    def get(self) -> list[M]:
         sql, params = self._select_sql()
         return [self.model_cls.hydrate(row) for row in self.db.query(sql, params)]
 
-    def first(self) -> "Model | None":
+    def first(self) -> M | None:
         sql, params = self._select_sql()
         row = self.db.first(sql, params)
         return self.model_cls.hydrate(row) if row else None
@@ -161,30 +163,30 @@ class Model:
         return get_db()
 
     @classmethod
-    def hydrate(cls, row: Mapping[str, Any]) -> "Model":
+    def hydrate(cls: type[M], row: Mapping[str, Any]) -> M:
         instance = cls(dict(row), exists=True)
         object.__setattr__(instance, "_dirty", set())
         return instance
 
     # -- query entry points -------------------------------------------------
     @classmethod
-    def query(cls) -> QueryBuilder:
+    def query(cls: type[M]) -> QueryBuilder[M]:
         return QueryBuilder(cls)
 
     @classmethod
-    def all(cls) -> list["Model"]:
+    def all(cls: type[M]) -> list[M]:
         return cls.query().get()
 
     @classmethod
-    def find(cls, identifier: Any) -> "Model | None":
+    def find(cls: type[M], identifier: Any) -> M | None:
         return cls.query().where(cls.primary_key, identifier).first()
 
     @classmethod
-    def where(cls, column: str, value: Any = None, operator: str = "=") -> QueryBuilder:
+    def where(cls: type[M], column: str, value: Any = None, operator: str = "=") -> QueryBuilder[M]:
         return cls.query().where(column, value, operator)
 
     @classmethod
-    def create(cls, data: Mapping[str, Any]) -> "Model":
+    def create(cls: type[M], data: Mapping[str, Any]) -> M:
         from core.support import now_iso
 
         payload = dict(data)

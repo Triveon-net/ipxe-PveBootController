@@ -53,6 +53,9 @@ class StartSession(Middleware):
 
 
 class AddSecurityHeaders(Middleware):
+    def __init__(self, config=None) -> None:
+        self.config = config
+
     def handle(self, request, next_handler):
         response = next_handler(request)
         headers = response.headers
@@ -62,15 +65,20 @@ class AddSecurityHeaders(Middleware):
         headers.setdefault(
             "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
         )
+        # Allow assets served from APP_URL even if the panel is opened via a
+        # different host (e.g. IP vs. hostname).
+        origin = (self.config.url if self.config else "") or ""
+        extra = f" {origin}" if origin else ""
         # HTMX + Tailwind CDN + Font Awesome CDN + inline styles/scripts.
         headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
-            "https://unpkg.com https://cdn.tailwindcss.com; "
-            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+            f"https://unpkg.com https://cdn.tailwindcss.com{extra}; "
+            "style-src 'self' 'unsafe-inline' "
+            f"https://cdnjs.cloudflare.com https://fonts.googleapis.com{extra}; "
             "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; "
-            "img-src 'self' data:; "
+            f"img-src 'self' data:{extra}; "
             "connect-src 'self'; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "

@@ -47,13 +47,13 @@ class Application:
     def __init__(self, config: Config | None = None) -> None:
         self.config = config or get_config()
         self.db = get_db()
-        self.router = Router()
+        self.router = Router(self.config.url)
         self.view = ViewFactory(self.config, self.router)
         self.auth = AuthManager(self.db, self.config)
         self.sessions = SessionStore(self.db, self.config)
 
         self.middleware: list[Middleware] = [
-            AddSecurityHeaders(),
+            AddSecurityHeaders(self.config),
             StartSession(self),
         ]
         self.middleware_map: dict[str, Middleware] = {

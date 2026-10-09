@@ -88,3 +88,12 @@ class Controller:
         rules: Mapping[str, str | list[str]],
     ) -> dict[str, Any]:
         return run_validation(data, rules)
+
+    @staticmethod
+    def first_error(exc: Exception) -> str:
+        """Return the first validation message from a ValidationException."""
+        errors = getattr(exc, "errors", {}) or {}
+        for messages in errors.values():
+            if messages:
+                return messages[0]
+        return getattr(exc, "message", "Please check the input.")

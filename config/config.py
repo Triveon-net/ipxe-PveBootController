@@ -92,6 +92,11 @@ class Config:
         self.controllers_path = self.resources_path / "controllers"
         self.migrations_path = root / "database" / "migrations"
 
+        # Uploaded boot files (vmlinuz, initrd.img, root.squashfs, ...).
+        self.storage_path = root / "storage"
+        self.bootfiles_path = self.storage_path / "bootfiles"
+        self.bootfile_max_bytes = int(os.environ.get("BOOTFILE_MAX_MB", "8192")) * 1024 * 1024
+
     @property
     def is_production(self) -> bool:
         return self.env.lower() in ("production", "prod")

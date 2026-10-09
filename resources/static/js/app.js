@@ -36,7 +36,9 @@
 
     function navKeyForPath(path) {
         if (path.indexOf("/nodes") === 0) return "nodes";
+        if (path.indexOf("/storage") === 0) return "storage";
         if (path.indexOf("/clusters") === 0) return "clusters";
+        if (path.indexOf("/boot") === 0) return "boot";
         if (path.indexOf("/settings") === 0) return "settings";
         if (path.indexOf("/dashboard") === 0 || path === "/") return "dashboard";
         return null;

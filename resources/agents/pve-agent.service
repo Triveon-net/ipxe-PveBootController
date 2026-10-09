@@ -1,0 +1,18 @@
+[Unit]
+Description=iPXE-PveController provisioning agent
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/usr/local/bin/pve-agent.py
+
+[Service]
+Type=simple
+# Optional overrides (PVE_CTRL, PVE_INTERVAL, ...); see pve-agent.conf.
+EnvironmentFile=-/etc/pve-agent.conf
+# --watch: polls every PVE_INTERVAL seconds (default 5) until the node is
+# accepted, then keeps the configuration applied.
+ExecStart=/usr/bin/python3 /usr/local/bin/pve-agent.py --watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

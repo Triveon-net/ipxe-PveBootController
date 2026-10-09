@@ -6,11 +6,12 @@ from core.exceptions import NotFound, ValidationException
 from core.response import text_response
 from core.support import slugify
 from resources.app.models.cluster import Cluster
+from resources.app.models.storage import Storage
 from resources.app.services.corosync import CorosyncConfigGenerator
 from resources.controllers.controller import Controller, is_htmx
 
 RULES = {
-    "name": "required|hostname",
+    "name": "required|cluster_name",
     "description": "nullable|string|max:255",
     "quorum_expected": "required|integer|min:1|max:64",
     "corosync_config": "nullable|json",
@@ -39,10 +40,18 @@ class ClustersController(Controller):
                 "nodes": nodes,
                 "node_ids": node_ids,
                 "corosync_conf": config,
+                "storages": Storage.query().order_by("storage_id").get(),
+                "assigned_storage_ids": Storage.ids_for_cluster(cluster.id),
                 "active": "clusters",
             },
             request,
         )
+
+    def save_storages(self, request, cluster_id: int):
+        cluster = self._find(cluster_id)
+        Storage.sync_for_cluster(cluster.id, request.form.getlist("storage_ids"))
+        self.flash("Cluster storage updated.", "success")
+        return self._done(request, f"/clusters/{cluster.id}")
 
     def corosync(self, request, cluster_id: int):
         cluster = self._find(cluster_id)

@@ -12,14 +12,18 @@ with Tailwind CSS, Font Awesome and HTMX on the front end.
 ## Quick start
 
 ```bash
-# 1. Create a virtualenv and install dependencies
+# 1. Install system packages (see apt.list for the full list)
+sudo apt-get update
+grep -vE '^\s*#|^\s*$' apt.list | sudo xargs -r apt-get install -y
+
+# 2. Create a virtualenv and install Python dependencies
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# 2. Create your .env and generate an application key
+# 3. Create your .env and generate an application key
 python3 main.py key:generate
 
-# 3. Start everything: the server starts and you get a console
+# 4. Start everything: the server starts and you get a console
 python3 main.py
 ```
 
@@ -121,8 +125,27 @@ scripts/                 # CLI command modules
    the stored hardware data, and returns the configuration the node should
    apply (name, IP, networking, cluster, Corosync, storage, VMs).
 
-Unknown MACs are recorded as *unregistered* boot events so you can map them in
-the panel.
+Unknown MACs are recorded as *unregistered* boot events. They appear under
+**Nodes → Pending** (and on the dashboard) with their reported MAC, IP, CPU and
+RAM — click **Create** to open a pre-filled node form and provision them, or
+**Reject** to dismiss a machine you don't want. Rejections are persisted per MAC
+(shown under *Rejected machines* with a **Restore** button) and the boot API
+answers such a MAC with `"rejected": true`, so the agent stops polling instead
+of retrying forever. Creating a node for a rejected MAC clears the rejection.
+
+### Storage (NFS)
+
+The **Storage** tab manages NFS shares. Create one with an **ID**, **Server
+(IP)** and **Export**:
+
+* While typing the server, the **Export** field loads the server's available
+exports (via `showmount -e`) into a dropdown you can pick from or type over.
+* Reachability is checked on save, but a storage is created either way; re-check
+any time with the refresh button.
+* Assign a storage to **individual nodes** (Nodes → edit → Storage) and/or to a
+**whole cluster** (Clusters → open a cluster → Storage). A node inherits its
+cluster's storage automatically — the effective list is returned by the boot
+API in `config.storages`.
 
 ### API endpoints
 
@@ -133,6 +156,16 @@ the panel.
 | `GET` | `/api/boot/config/<mac>` | Fetch a node's config by MAC |
 | `GET` | `/api/nodes` | Read-only list of configured nodes |
 | `GET` | `/boot.ipxe` | iPXE boot script |
+| `GET` | `/bootfiles/<name>` | Uploaded boot file (vmlinuz, initrd, squashfs, …) |
+| `GET` | `/agent/pve-agent.py` | Python provisioning agent (reports + applies config) |
+| `GET` | `/agent/pve-agent.service` | systemd unit to run the agent on boot |
+| `GET` | `/agent/pve-agent.conf` | EnvironmentFile template for the agent |
+| `GET` | `/agent/install.sh` | One-line installer (enables the service, keeps it stopped) |
+| `GET` | `/agent/pve-report.sh` | Shell agent (reports hardware only) |
+
+Panel pages (session + CSRF protected): `/dashboard`, `/nodes`,
+`/nodes/pending`, `/nodes/create`, `/storage`, `/clusters`, `/clusters/<id>`,
+`/boot`, `/settings`.
 
 Machine clients authenticate with the `X-API-Token` header when a token is set
 under **Settings → api.token** (generate one via `db:seed`).
@@ -199,6 +232,125 @@ The generated config is also returned by the boot API in
 `/etc/pve/corosync.conf` during provisioning. You can fetch it directly at
 `GET /clusters/<id>/corosync.conf` (append `?download=1` for an attachment).
 
+### Boot script (iPXE)
+
+The **Boot** tab edits every option of the generated `boot.ipxe` with a live
+preview. Upload your kernel/initrd/squashfs under **Boot files**; they are served
+at `/bootfiles/<name>` and referenced automatically. The default script is
+deliberately **server-independent** (no network interface reference), so the
+*same* script works on every machine:
+
+```
+#!ipxe
+set controller http://10.0.0.5:8000
+dhcp
+kernel http://10.0.0.5:8000/bootfiles/vmlinuz initrd=initrd.img pve_ctrl=${controller} boot=live fetch=http://10.0.0.5:8000/bootfiles/root.squashfs ip=dhcp
+initrd http://10.0.0.5:8000/bootfiles/initrd.img
+boot
+```
+
+The MAC address is **not** taken from iPXE (that would require knowing the
+interface name). The agent inside the image detects the MAC itself. So the
+entire setup is: one DHCP config (options 66/67), one `boot.ipxe`, one image —
+rack the server, power it on, done.
+
+* **Boot files** — upload `vmlinuz`, `initrd.img`, `root.squashfs`, … (up to
+  `BOOTFILE_MAX_MB`, default 8 GB). They are served with HTTP Range support and
+  selectable in the Boot action, or referenced via the manual URL overrides.
+* **`${fetch}`** in the kernel cmdline is replaced by the squashfs URL (the
+  default cmdline `boot=live ${fetch} ip=dhcp` yields
+  `boot=live fetch=http://…/bootfiles/root.squashfs ip=dhcp`).
+* **`${controller}`** is an iPXE variable set by the `set controller` line from
+  the *Controller URL* field (or `APP_URL`).
+* Optional toggles additionally capture/echo the MAC into `${node-mac}` and add
+  `pve_mac=` to the kernel cmdline — off by default.
+
+Options are stored in the `pxe.boot_config` setting; files live in `storage/bootfiles/`.
+
+### Client agent (inside the node image)
+
+iPXE cannot POST JSON, so the hardware report is done by an agent you add to
+your provisioning image **once**. Two variants are served by the panel and
+downloadable from the Boot tab:
+
+**`pve-agent.py`** — recommended, Python (standard library only). It finds its
+own MAC (the interface that routes to the controller; loopback and
+container/virtual NICs are skipped, Proxmox bridges and bonds are kept), reports
+MAC/CPU/cores/RAM and then **applies** the returned configuration:
+
+* hostname, the Proxmox way: `/etc/hostname` + `/etc/hosts` (renames all
+  occurrences, keeps/updates the management-IP mapping), `/etc/mailname`,
+  `/etc/postfix/main.cf` and the history dirs under `/var/lib/rrdcached/db/`
+* management network (`/etc/network/interfaces`, `/etc/resolv.conf`) —
+  static IP/netmask/gateway, optional VLAN, bridge (`vmbr0`, …)
+* Corosync/cluster (`/etc/pve/corosync.conf`, renaming the node inside it too)
+* NFS storages (`/etc/pve/storage.cfg`)
+
+```sh
+# place it in the image, then run (e.g. from a systemd unit at first boot):
+python3 /usr/local/bin/pve-agent.py            # report + apply
+python3 /usr/local/bin/pve-agent.py --dry-run  # show what would change
+python3 /usr/local/bin/pve-agent.py --report-only
+python3 /usr/local/bin/pve-agent.py --root /mnt/target   # installer target
+```
+
+Existing files are backed up to `*.pve-agent.bak` before being overwritten, and
+every step is independent (a failure is reported, the rest still runs). It is
+idempotent.
+
+**One-line install on the node** — installs `pve-agent.py`, the systemd unit and
+`/etc/pve-agent.conf` (pointed at this controller), then **enables** the service
+but leaves it **stopped**:
+
+```sh
+curl -fsSL http://<controller>/agent/install.sh | sh
+# ... start it when you're ready:
+systemctl start pve-agent.service
+```
+
+Or install the parts manually. Grab the unit + config template from the
+Boot tab or from `/agent/pve-agent.service` and `/agent/pve-agent.conf`:
+
+```sh
+install -m 0755 pve-agent.py      /usr/local/bin/pve-agent.py
+install -m 0644 pve-agent.service /etc/systemd/system/pve-agent.service
+install -m 0644 pve-agent.conf    /etc/pve-agent.conf
+systemctl daemon-reload
+systemctl enable --now pve-agent.service
+```
+
+The unit is `Type=simple` and runs `pve-agent.py --watch`: it **polls every
+`PVE_INTERVAL` seconds (default 5) until the node is accepted**, applies the
+configuration, and keeps running (re-applying only when the returned config
+changes). The agent **auto-loads `pve-agent.conf`** — no need to export
+anything. It is searched in this order (first hit wins): `--conf PATH` (or
+`PVE_CONF`), `/etc/pve-agent.conf`, then `pve-agent.conf` / `agent.conf` /
+`pve.conf` next to the script or in the current directory. So dropping the file
+next to `agent.py` is enough to run it manually.
+
+Supported keys (precedence: command line → real environment → this file → kernel
+cmdline):
+
+| Key | Meaning |
+| --- | --- |
+| `PVE_CTRL` | Controller base URL (e.g. `http://192.168.189.249:8080`) |
+| `PVE_API_TOKEN` | Shared API token (if set under Settings → api.token) |
+| `PVE_IFACE` | Force a NIC instead of auto-detecting |
+| `PVE_MAC` | Force a MAC instead of reading it from the NIC |
+| `PVE_ROOT` | Target root (use a mount point from an installer, e.g. `/mnt`) |
+| `PVE_REPORT_ONLY` | `true` = report only, apply nothing |
+| `PVE_WATCH` | `true` = poll every `PVE_INTERVAL` seconds until accepted (the unit passes `--watch`) |
+| `PVE_INTERVAL` | poll interval in seconds (default 5) |
+| `PVE_DRY_RUN` | `true` = simulate, write nothing |
+| `PVE_TIMEOUT` | HTTP timeout in seconds |
+
+**`pve-report.sh`** — minimal POSIX shell. Reports the hardware and saves the
+returned config to `/run/pve-config.json`, but applies nothing.
+
+```sh
+curl -fsSL http://<controller>/agent/pve-report.sh | sh
+```
+
 ---
 
 ## Security
@@ -262,9 +414,10 @@ All configuration lives in `.env` (see `.env.example`). Highlights:
 ## Status / next steps
 
 This is the working scaffold: framework core, authentication, the panel
-(dashboard, nodes, clusters, settings), the boot-report API and automatic
-Corosync config generation. Still to build:
+(dashboard, nodes, pending nodes, storage, clusters, boot, settings), the
+boot-report API, automatic Corosync config generation, NFS storage management,
+a configurable iPXE boot script and a Python provisioning agent that applies
+hostname, network, Corosync and storages. Still to build:
 
-- Generating Proxmox answer files / cloud-init from the stored node config.
-- Applying the generated cluster/storage/VM definitions during provisioning.
+- Creating VMs on the node from the stored VM definitions (`qm create`).
 - Per-node boot profiles and a provisioning progress UI.

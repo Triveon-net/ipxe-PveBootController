@@ -23,6 +23,13 @@ def register(router) -> None:
 
         # Nodes
         router.get("/nodes", "NodesController@index").name("nodes.index")
+        router.get("/nodes/pending", "NodesController@pending").name("nodes.pending")
+        router.post("/nodes/pending/<string:mac>/reject", "NodesController@reject").name(
+            "nodes.reject"
+        )
+        router.post("/nodes/pending/<string:mac>/unreject", "NodesController@unreject").name(
+            "nodes.unreject"
+        )
         router.get("/nodes/create", "NodesController@create").name("nodes.create")
         router.post("/nodes", "NodesController@store").name("nodes.store")
         router.get("/nodes/<int:node_id>", "NodesController@show").name("nodes.show")
@@ -42,8 +49,33 @@ def register(router) -> None:
         router.get("/clusters/<int:cluster_id>/corosync.conf", "ClustersController@corosync").name(
             "clusters.corosync"
         )
+        router.post("/clusters/<int:cluster_id>/storage", "ClustersController@save_storages").name(
+            "clusters.storage"
+        )
         router.post("/clusters/<int:cluster_id>/delete", "ClustersController@destroy").name(
             "clusters.destroy"
+        )
+
+        # Storage (NFS shares)
+        router.get("/storage", "StorageController@index").name("storage.index")
+        router.post("/storage", "StorageController@store").name("storage.store")
+        router.get("/storage/exports", "StorageController@exports").name("storage.exports")
+        router.post("/storage/<int:storage_id>/check", "StorageController@check").name(
+            "storage.check"
+        )
+        router.post("/storage/<int:storage_id>/delete", "StorageController@destroy").name(
+            "storage.destroy"
+        )
+
+        # Boot script (iPXE) configuration
+        router.get("/boot", "BootController@index").name("boot.index")
+        router.post("/boot", "BootController@update").name("boot.update")
+        router.post("/boot/preview", "BootController@preview").name("boot.preview")
+
+        # Boot files (upload / delete)
+        router.post("/boot/files", "BootFilesController@store").name("bootfiles.store")
+        router.post("/boot/files/<int:file_id>/delete", "BootFilesController@destroy").name(
+            "bootfiles.destroy"
         )
 
         # Settings

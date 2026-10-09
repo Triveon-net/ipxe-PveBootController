@@ -39,3 +39,20 @@ class Node(Model):
 
         cluster_id = self._attributes.get("cluster_id")
         return Cluster.find(cluster_id) if cluster_id else None
+
+    def storages(self):
+        """Storages assigned directly to this node."""
+        from resources.app.models.storage import Storage
+
+        return Storage.for_node(self.id)
+
+    def effective_storages(self):
+        """Storages for this node: its own plus those of its cluster."""
+        from resources.app.models.storage import Storage
+
+        merged: dict[int, Storage] = {s.id: s for s in self.storages()}
+        cluster_id = self._attributes.get("cluster_id")
+        if cluster_id:
+            for storage in Storage.for_cluster(cluster_id):
+                merged.setdefault(storage.id, storage)
+        return list(merged.values())

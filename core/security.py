@@ -65,6 +65,7 @@ class Validator:
 
     _MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
     _HOSTNAME_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
+    _CLUSTER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,62}$")
     _USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,64}$")
 
     @staticmethod
@@ -110,6 +111,19 @@ class Validator:
         value = str(value).strip().lower()
         if not Validator._HOSTNAME_RE.match(value):
             raise ValidationError(f"Invalid hostname: {value!r}")
+        return value
+
+    @staticmethod
+    def cluster_name(value: object) -> str:
+        """Cluster name, case-preserving (e.g. 'AGC-M1')."""
+        if value is None:
+            raise ValidationError("Cluster name is required.")
+        value = str(value).strip()
+        if not Validator._CLUSTER_RE.match(value):
+            raise ValidationError(
+                "Cluster name must start with a letter and contain only "
+                "letters, digits, dot, dash, underscore."
+            )
         return value
 
     @staticmethod
@@ -173,7 +187,7 @@ class Shell:
     """
 
     DEFAULT_ALLOWED = frozenset(
-        {"ip", "ipmitool", "ssh", "scp", "mount", "umount", "pvesh", "pvesm"}
+        {"ip", "ipmitool", "ssh", "scp", "mount", "umount", "showmount", "pvesh", "pvesm"}
     )
 
     @classmethod

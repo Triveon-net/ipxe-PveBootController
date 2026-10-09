@@ -8,12 +8,22 @@
             <h1 id="page-title" class="text-2xl font-semibold tracking-tight text-slate-100">Nodes</h1>
             <p class="mt-1 text-sm text-slate-500">Nodes are identified by the MAC address of their provisioning NIC.</p>
         </div>
-        <a href="{{ url_for('nodes.create') }}"
-           hx-get="{{ url_for('nodes.create') }}"
-           hx-target="#app-content" hx-push-url="true"
-           class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
-            <i class="fa-solid fa-plus"></i><span>New node</span>
-        </a>
+        <div class="flex items-center gap-2">
+            <a href="{{ url_for('nodes.pending') }}"
+               hx-get="{{ url_for('nodes.pending') }}"
+               hx-target="#app-content" hx-push-url="true"
+               class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition
+                      {{ 'border-amber-500/40 text-amber-300 hover:bg-amber-500/10' if pending_count else 'border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200' }}">
+                <i class="fa-solid fa-satellite-dish"></i>
+                <span>Pending{% if pending_count %} ({{ pending_count }}){% endif %}</span>
+            </a>
+            <a href="{{ url_for('nodes.create') }}"
+               hx-get="{{ url_for('nodes.create') }}"
+               hx-target="#app-content" hx-push-url="true"
+               class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
+                <i class="fa-solid fa-plus"></i><span>New node</span>
+            </a>
+        </div>
     </div>
 
     {% if nodes %}

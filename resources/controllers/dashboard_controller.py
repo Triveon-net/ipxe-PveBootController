@@ -14,11 +14,13 @@ class DashboardController(Controller):
         return self.redirect("/dashboard" if auth.check() else "/login")
 
     def index(self, request):
+        pending = BootEvent.pending()
         stats = {
             "nodes": Node.query().count(),
             "configured": Node.where("status", "configured").count(),
             "pending": Node.where("status", "pending").count(),
             "clusters": Cluster.query().count(),
+            "unregistered": len(pending),
         }
         recent_events = (
             BootEvent.query().order_by("id", "desc").limit(8).get()
