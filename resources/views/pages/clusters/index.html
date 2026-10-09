@@ -1,0 +1,94 @@
+{% from 'partials/ui.html' import empty_state %}
+{% extends layout %}
+{% block title %}Clusters{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl">
+    <div class="mb-6">
+        <h1 id="page-title" class="text-2xl font-semibold tracking-tight text-slate-100">Clusters</h1>
+        <p class="mt-1 text-sm text-slate-500">Proxmox clusters and their Corosync configuration.</p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div class="lg:col-span-2">
+            {% if clusters %}
+            <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+                <table class="w-full text-left text-sm">
+                    <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                            <th class="px-5 py-3 font-medium">Cluster</th>
+                            <th class="px-5 py-3 font-medium">Nodes</th>
+                            <th class="px-5 py-3 font-medium">Quorum</th>
+                            <th class="px-5 py-3 text-right font-medium">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800">
+                        {% for cluster in clusters %}
+                        <tr class="transition hover:bg-slate-800/30">
+                            <td class="px-5 py-3">
+                                <a href="{{ url_for('clusters.show', cluster_id=cluster.id) }}"
+                                   hx-get="{{ url_for('clusters.show', cluster_id=cluster.id) }}"
+                                   hx-target="#app-content" hx-push-url="true"
+                                   class="font-medium text-slate-200 hover:text-white">{{ cluster.name }}</a>
+                                {% if cluster.description %}
+                                <div class="text-xs text-slate-500">{{ cluster.description }}</div>
+                                {% endif %}
+                            </td>
+                            <td class="px-5 py-3 text-slate-400">{{ cluster.node_count }}</td>
+                            <td class="px-5 py-3 text-slate-400">{{ cluster.quorum_expected }}</td>
+                            <td class="px-5 py-3 text-right">
+                                <button type="button"
+                                        hx-post="{{ url_for('clusters.destroy', cluster_id=cluster.id) }}"
+                                        hx-swap="none"
+                                        hx-confirm="Delete cluster '{{ cluster.name }}'?"
+                                        class="rounded-lg p-2 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300"
+                                        title="Delete">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            {{ empty_state('fa-circle-nodes', 'No clusters', 'Create a cluster to group and configure your nodes.') }}
+            {% endif %}
+        </div>
+
+        <div>
+            <form hx-post="{{ url_for('clusters.store') }}" hx-swap="none"
+                  method="post" action="{{ url_for('clusters.store') }}"
+                  class="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-plus mr-2 text-brand-400"></i>New cluster</h2>
+                <input type="hidden" name="_token" value="{{ csrf_token() }}">
+
+                <div>
+                    <label class="mb-1 block text-sm text-slate-400" for="cname">Name</label>
+                    <input id="cname" name="name" placeholder="pve-cluster" required
+                           class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm text-slate-400" for="cdesc">Description</label>
+                    <input id="cdesc" name="description"
+                           class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm text-slate-400" for="cquorum">Expected votes (quorum)</label>
+                    <input id="cquorum" name="quorum_expected" type="number" min="1" value="1"
+                           class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm text-slate-400" for="ccorosync">Corosync config (JSON)</label>
+                    <textarea id="ccorosync" name="corosync_config" rows="4"
+                              placeholder='{"ring0_addr": "10.0.0.10"}'
+                              class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100 outline-none focus:border-brand-500">{}</textarea>
+                </div>
+                <button type="submit"
+                        class="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
+                    <i class="fa-solid fa-floppy-disk mr-1"></i> Create cluster
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

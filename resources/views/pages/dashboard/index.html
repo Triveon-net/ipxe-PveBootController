@@ -1,0 +1,85 @@
+{% extends layout %}
+{% from 'partials/ui.html' import status_badge, stat_card, empty_state %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-6xl">
+    <div class="mb-6 flex items-center justify-between">
+        <div>
+            <h1 id="page-title" class="text-2xl font-semibold tracking-tight text-slate-100">Dashboard</h1>
+            <p class="mt-1 text-sm text-slate-500">Overview of your PXE-provisioned Proxmox fleet.</p>
+        </div>
+        <a href="{{ url_for('nodes.create') }}"
+           hx-get="{{ url_for('nodes.create') }}"
+           hx-target="#app-content" hx-push-url="true"
+           class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
+            <i class="fa-solid fa-plus"></i><span>New node</span>
+        </a>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {{ stat_card('Total nodes', stats.nodes, 'fa-server', 'brand') }}
+        {{ stat_card('Configured', stats.configured, 'fa-circle-check', 'emerald') }}
+        {{ stat_card('Pending', stats.pending, 'fa-hourglass-half', 'amber') }}
+        {{ stat_card('Clusters', stats.clusters, 'fa-circle-nodes', 'sky') }}
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section class="rounded-xl border border-slate-800 bg-slate-900/50">
+            <div class="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+                <h2 class="text-sm font-medium text-slate-300">Recent nodes</h2>
+                <a href="{{ url_for('nodes.index') }}" hx-get="{{ url_for('nodes.index') }}"
+                   hx-target="#app-content" hx-push-url="true"
+                   class="text-xs text-brand-400 hover:text-brand-300">View all</a>
+            </div>
+            {% if recent_nodes %}
+            <ul class="divide-y divide-slate-800">
+                {% for node in recent_nodes %}
+                <li class="flex items-center justify-between px-5 py-3">
+                    <div class="min-w-0">
+                        <a href="{{ url_for('nodes.show', node_id=node.id) }}"
+                           hx-get="{{ url_for('nodes.show', node_id=node.id) }}"
+                           hx-target="#app-content" hx-push-url="true"
+                           class="truncate font-medium text-slate-200 hover:text-white">{{ node.name }}</a>
+                        <div class="truncate text-xs text-slate-500">{{ node.ip_address }} · {{ node.mac_address }}</div>
+                    </div>
+                    {{ status_badge(node.status) }}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="p-5">{{ empty_state('fa-server', 'No nodes yet', 'Add your first node to get started.') }}</div>
+            {% endif %}
+        </section>
+
+        <section class="rounded-xl border border-slate-800 bg-slate-900/50">
+            <div class="border-b border-slate-800 px-5 py-3">
+                <h2 class="text-sm font-medium text-slate-300">Recent boot reports</h2>
+            </div>
+            {% if recent_events %}
+            <ul class="divide-y divide-slate-800">
+                {% for event in recent_events %}
+                <li class="px-5 py-3">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono text-xs text-slate-300">{{ event.mac_address }}</span>
+                        {% if event.node_id %}
+                        <span class="text-xs text-emerald-300">known</span>
+                        {% else %}
+                        <span class="text-xs text-amber-300">unregistered</span>
+                        {% endif %}
+                    </div>
+                    <div class="mt-1 text-xs text-slate-500">
+                        {{ event.cpu_model or 'CPU unknown' }}
+                        {% if event.cpu_count %} · {{ event.cpu_count }} vCPU{% endif %}
+                        {% if event.ram_gb %} · {{ event.ram_gb }} GB RAM{% endif %}
+                        · {{ event.created_at|datetime }}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="p-5">{{ empty_state('fa-satellite-dish', 'No boot reports', 'Booting nodes will appear here automatically.') }}</div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

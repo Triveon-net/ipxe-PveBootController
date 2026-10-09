@@ -1,0 +1,92 @@
+{% from 'partials/ui.html' import status_badge, empty_state %}
+{% extends layout %}
+{% block title %}{{ cluster.name }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl">
+    <div class="mb-6 flex items-start justify-between">
+        <div>
+            <a href="{{ url_for('clusters.index') }}"
+               hx-get="{{ url_for('clusters.index') }}" hx-target="#app-content" hx-push-url="true"
+               class="text-xs text-slate-500 hover:text-slate-300"><i class="fa-solid fa-arrow-left mr-1"></i>Clusters</a>
+            <h1 id="page-title" class="mt-2 flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-100">
+                <i class="fa-solid fa-circle-nodes text-brand-400"></i>{{ cluster.name }}
+            </h1>
+            <p class="mt-1 text-sm text-slate-500">
+                {{ cluster.description or 'No description' }} · Quorum expected: {{ cluster.quorum_expected }}
+            </p>
+        </div>
+        <button type="button"
+                hx-post="{{ url_for('clusters.destroy', cluster_id=cluster.id) }}"
+                hx-swap="none"
+                hx-confirm="Delete cluster '{{ cluster.name }}'?"
+                class="rounded-lg border border-slate-800 px-4 py-2 text-sm text-slate-400 transition hover:border-rose-500/40 hover:text-rose-300">
+            <i class="fa-solid fa-trash"></i><span class="ml-1">Delete</span>
+        </button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section class="rounded-xl border border-slate-800 bg-slate-900/50">
+            <div class="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+                <h2 class="text-sm font-medium text-slate-300">Nodes in this cluster</h2>
+                <span class="text-xs text-slate-500">{{ nodes|length }} node(s)</span>
+            </div>
+            {% if nodes %}
+            <table class="w-full text-left text-sm">
+                <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                        <th class="px-5 py-3 font-medium">Node</th>
+                        <th class="px-5 py-3 font-medium">Node ID</th>
+                        <th class="px-5 py-3 font-medium">Ring0</th>
+                        <th class="px-5 py-3 font-medium">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                    {% for node in nodes %}
+                    <tr>
+                        <td class="px-5 py-3">
+                            <a href="{{ url_for('nodes.show', node_id=node.id) }}"
+                               hx-get="{{ url_for('nodes.show', node_id=node.id) }}"
+                               hx-target="#app-content" hx-push-url="true"
+                               class="font-medium text-slate-200 hover:text-white">{{ node.name }}</a>
+                        </td>
+                        <td class="px-5 py-3 font-mono text-slate-400">{{ node_ids.get(node.id, '—') }}</td>
+                        <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ node.ip_address or '—' }}</td>
+                        <td class="px-5 py-3">{{ status_badge(node.status) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-5">
+                {{ empty_state('fa-server', 'No nodes assigned',
+                   'Assign nodes to this cluster (Nodes → edit node → Cluster) and the config is generated automatically.') }}
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="rounded-xl border border-slate-800 bg-slate-900/50">
+            <div class="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+                <h2 class="text-sm font-medium text-slate-300">
+                    <i class="fa-solid fa-file-code mr-2 text-brand-400"></i>corosync.conf
+                    <span class="ml-2 text-xs font-normal text-slate-500">auto-generated</span>
+                </h2>
+                <div class="flex items-center gap-2">
+                    <button type="button"
+                            data-copy-target="#corosync-conf"
+                            class="rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-700 hover:text-slate-100">
+                        <i class="fa-solid fa-copy"></i><span class="ml-1">Copy</span>
+                    </button>
+                    <a href="{{ url_for('clusters.corosync', cluster_id=cluster.id) }}?download=1"
+                       class="rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-700 hover:text-slate-100">
+                        <i class="fa-solid fa-download"></i><span class="ml-1">Download</span>
+                    </a>
+                </div>
+            </div>
+            <pre id="corosync-conf" class="max-h-[32rem] overflow-auto p-4 font-mono text-xs leading-relaxed text-slate-300">{{ corosync_conf }}</pre>
+            <div class="border-t border-slate-800 px-5 py-3 text-xs text-slate-500">
+                Deployed to <code class="font-mono">/etc/pve/corosync.conf</code> on each node during provisioning.
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

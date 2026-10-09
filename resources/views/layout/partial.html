@@ -1,0 +1,6 @@
+{#
+Bare layout used when HTMX swaps content into #app-content. It renders only
+the `content` block, so a page template can `{% extends layout %}` and work
+identically for full-page loads and in-app navigation.
+#}
+{% block content %}{% endblock %}

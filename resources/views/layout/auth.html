@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Sign in{% endblock %} · {{ app_name }}</title>
+
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+</head>
+<body class="h-full bg-slate-950 text-slate-200 antialiased"
+      hx-headers='{"X-CSRF-Token": "{{ csrf_token() }}"}'>
+<div class="flex min-h-full items-center justify-center px-4">
+    {% block content %}{% endblock %}
+</div>
+<script src="{{ asset('js/app.js') }}"></script>
+</body>
+</html>

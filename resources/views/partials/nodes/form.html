@@ -1,0 +1,133 @@
+{% macro err(name) %}
+{% if errors and errors.get(name) %}
+<p class="mt-1 text-xs text-rose-400"><i class="fa-solid fa-circle-exclamation mr-1"></i>{{ errors[name][0] }}</p>
+{% endif %}
+{% endmacro %}
+
+{% set input_class = 'w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-brand-500' %}
+{% set label_class = 'mb-1 block text-sm text-slate-400' %}
+
+<form hx-post="{{ '/nodes/' ~ node.id if node else '/nodes' }}"
+      hx-target="#node-form-panel"
+      hx-swap="innerHTML"
+      method="post"
+      action="{{ '/nodes/' ~ node.id if node else '/nodes' }}"
+      class="space-y-6">
+    <input type="hidden" name="_token" value="{{ csrf_token() }}">
+
+    <!-- Identity -->
+    <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+        <h2 class="mb-4 text-sm font-medium text-slate-300"><i class="fa-solid fa-fingerprint mr-2 text-brand-400"></i>Identity</h2>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+                <label class="{{ label_class }}" for="name">Node name</label>
+                <input id="name" name="name" value="{{ values.name }}" placeholder="pve-node-01" class="{{ input_class }}">
+                {{ err('name') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="mac_address">MAC address (provisioning NIC)</label>
+                <input id="mac_address" name="mac_address" value="{{ values.mac_address }}"
+                       placeholder="aa:bb:cc:dd:ee:ff" class="{{ input_class }} font-mono">
+                {{ err('mac_address') }}
+            </div>
+        </div>
+    </section>
+
+    <!-- Networking -->
+    <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+        <h2 class="mb-4 text-sm font-medium text-slate-300"><i class="fa-solid fa-ethernet mr-2 text-brand-400"></i>Networking</h2>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+                <label class="{{ label_class }}" for="ip_address">Management IP</label>
+                <input id="ip_address" name="ip_address" value="{{ values.ip_address }}" placeholder="10.0.0.10" class="{{ input_class }} font-mono">
+                {{ err('ip_address') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="netmask">Netmask</label>
+                <input id="netmask" name="netmask" value="{{ values.netmask }}" placeholder="255.255.255.0" class="{{ input_class }} font-mono">
+                {{ err('netmask') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="gateway">Gateway</label>
+                <input id="gateway" name="gateway" value="{{ values.gateway }}" placeholder="10.0.0.1" class="{{ input_class }} font-mono">
+                {{ err('gateway') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="vlan">VLAN (optional)</label>
+                <input id="vlan" name="vlan" value="{{ values.vlan }}" placeholder="100" class="{{ input_class }}">
+                {{ err('vlan') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="dns">DNS servers</label>
+                <input id="dns" name="dns" value="{{ values.dns }}" placeholder="1.1.1.1 8.8.8.8" class="{{ input_class }}">
+                {{ err('dns') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="bridge">Bridge</label>
+                <input id="bridge" name="bridge" value="{{ values.bridge }}" placeholder="vmbr0" class="{{ input_class }}">
+                {{ err('bridge') }}
+            </div>
+        </div>
+    </section>
+
+    <!-- Cluster & Corosync -->
+    <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+        <h2 class="mb-4 text-sm font-medium text-slate-300"><i class="fa-solid fa-circle-nodes mr-2 text-brand-400"></i>Cluster &amp; Corosync</h2>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+                <label class="{{ label_class }}" for="cluster_id">Cluster</label>
+                <select id="cluster_id" name="cluster_id" class="{{ input_class }}">
+                    <option value="">— none —</option>
+                    {% for cluster in clusters %}
+                    <option value="{{ cluster.id }}" {{ 'selected' if values.cluster_id|string == cluster.id|string else '' }}>{{ cluster.name }}</option>
+                    {% endfor %}
+                </select>
+                {{ err('cluster_id') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="corosync_node_id">Corosync node ID</label>
+                <input id="corosync_node_id" name="corosync_node_id" value="{{ values.corosync_node_id }}" placeholder="1" class="{{ input_class }}">
+                {{ err('corosync_node_id') }}
+            </div>
+        </div>
+    </section>
+
+    <!-- Advanced configuration -->
+    <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+        <h2 class="mb-1 text-sm font-medium text-slate-300"><i class="fa-solid fa-code mr-2 text-brand-400"></i>Advanced configuration</h2>
+        <p class="mb-4 text-xs text-slate-500">JSON applied by the node's provisioning agent. Stored safely and returned by the boot API.</p>
+        <div class="space-y-4">
+            <div>
+                <label class="{{ label_class }}" for="storage_config">Storage (JSON array)</label>
+                <textarea id="storage_config" name="storage_config" rows="4"
+                          class="{{ input_class }} font-mono text-xs">{{ values.storage_config }}</textarea>
+                {{ err('storage_config') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="vm_config">VMs (JSON array)</label>
+                <textarea id="vm_config" name="vm_config" rows="4"
+                          class="{{ input_class }} font-mono text-xs">{{ values.vm_config }}</textarea>
+                {{ err('vm_config') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="network_config">Network (JSON object)</label>
+                <textarea id="network_config" name="network_config" rows="4"
+                          class="{{ input_class }} font-mono text-xs">{{ values.network_config }}</textarea>
+                {{ err('network_config') }}
+            </div>
+        </div>
+    </section>
+
+    <div class="flex items-center justify-end gap-3">
+        <a href="{{ url_for('nodes.index') }}"
+           hx-get="{{ url_for('nodes.index') }}" hx-target="#app-content" hx-push-url="true"
+           class="rounded-lg border border-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:border-slate-700 hover:text-white">
+            Cancel
+        </a>
+        <button type="submit"
+                class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>{{ 'Save changes' if node else 'Create node' }}</span>
+        </button>
+    </div>
+</form>

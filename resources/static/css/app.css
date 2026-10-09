@@ -1,0 +1,34 @@
+/* iPXE PVE Controller — small custom styles layered over Tailwind. */
+
+/* HTMX request indicator (progress bar in the layout). */
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+/* Nicer scrollbars in the dark theme. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+*::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+    background-color: #334155;
+    border-radius: 9999px;
+}
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* Smooth content transitions when HTMX swaps the main region. */
+#app-content.htmx-swapping {
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+}

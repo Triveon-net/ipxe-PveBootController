@@ -1,0 +1,76 @@
+{% from 'partials/ui.html' import status_badge, empty_state %}
+{% extends layout %}
+{% block title %}Nodes{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-6xl">
+    <div class="mb-6 flex items-center justify-between">
+        <div>
+            <h1 id="page-title" class="text-2xl font-semibold tracking-tight text-slate-100">Nodes</h1>
+            <p class="mt-1 text-sm text-slate-500">Nodes are identified by the MAC address of their provisioning NIC.</p>
+        </div>
+        <a href="{{ url_for('nodes.create') }}"
+           hx-get="{{ url_for('nodes.create') }}"
+           hx-target="#app-content" hx-push-url="true"
+           class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
+            <i class="fa-solid fa-plus"></i><span>New node</span>
+        </a>
+    </div>
+
+    {% if nodes %}
+    <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-5 py-3 font-medium">Node</th>
+                    <th class="px-5 py-3 font-medium">Management IP</th>
+                    <th class="px-5 py-3 font-medium">MAC</th>
+                    <th class="px-5 py-3 font-medium">Hardware</th>
+                    <th class="px-5 py-3 font-medium">Status</th>
+                    <th class="px-5 py-3 text-right font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for node in nodes %}
+                <tr class="transition hover:bg-slate-800/30">
+                    <td class="px-5 py-3">
+                        <a href="{{ url_for('nodes.show', node_id=node.id) }}"
+                           hx-get="{{ url_for('nodes.show', node_id=node.id) }}"
+                           hx-target="#app-content" hx-push-url="true"
+                           class="font-medium text-slate-200 hover:text-white">{{ node.name }}</a>
+                    </td>
+                    <td class="px-5 py-3 text-slate-400">{{ node.ip_address or '—' }}</td>
+                    <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ node.mac_address }}</td>
+                    <td class="px-5 py-3 text-slate-400">
+                        {% if node.cpu_count %}{{ node.cpu_count }} vCPU{% else %}—{% endif %}
+                        {% if node.ram_gb %} · {{ node.ram_gb }} GB{% endif %}
+                    </td>
+                    <td class="px-5 py-3">{{ status_badge(node.status) }}</td>
+                    <td class="px-5 py-3">
+                        <div class="flex items-center justify-end gap-1">
+                            <a href="{{ url_for('nodes.edit', node_id=node.id) }}"
+                               hx-get="{{ url_for('nodes.edit', node_id=node.id) }}"
+                               hx-target="#app-content" hx-push-url="true"
+                               class="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-100"
+                               title="Edit">
+                                <i class="fa-solid fa-pen"></i>
+                            </a>
+                            <button type="button"
+                                    hx-post="{{ url_for('nodes.destroy', node_id=node.id) }}"
+                                    hx-target="#app-content"
+                                    hx-confirm="Delete node '{{ node.name }}'?"
+                                    class="rounded-lg p-2 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300"
+                                    title="Delete">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    {{ empty_state('fa-server', 'No nodes configured', 'Create a node with its MAC address to begin provisioning.') }}
+    {% endif %}
+</div>
+{% endblock %}

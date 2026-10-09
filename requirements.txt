@@ -1,0 +1,7 @@
+# iPXE-PveController - runtime dependencies
+# WSGI toolkit (HTTP request/response, routing primitives, secure cookies)
+Werkzeug>=3.0
+# Template engine with autoescaping (XSS protection by default)
+Jinja2>=3.1
+# Signed/secure token helpers
+itsdangerous>=2.1

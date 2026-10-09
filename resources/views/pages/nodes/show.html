@@ -1,0 +1,110 @@
+{% from 'partials/ui.html' import status_badge, empty_state %}
+{% extends layout %}
+{% block title %}{{ node.name }}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl">
+    <div class="mb-6 flex items-start justify-between">
+        <div>
+            <a href="{{ url_for('nodes.index') }}"
+               hx-get="{{ url_for('nodes.index') }}" hx-target="#app-content" hx-push-url="true"
+               class="text-xs text-slate-500 hover:text-slate-300"><i class="fa-solid fa-arrow-left mr-1"></i>Nodes</a>
+            <div class="mt-2 flex items-center gap-3">
+                <h1 id="page-title" class="text-2xl font-semibold tracking-tight text-slate-100">{{ node.name }}</h1>
+                {{ status_badge(node.status) }}
+            </div>
+            <p class="mt-1 font-mono text-sm text-slate-500">{{ node.mac_address }}</p>
+        </div>
+        <a href="{{ url_for('nodes.edit', node_id=node.id) }}"
+           hx-get="{{ url_for('nodes.edit', node_id=node.id) }}"
+           hx-target="#app-content" hx-push-url="true"
+           class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
+            <i class="fa-solid fa-pen"></i><span>Edit</span>
+        </a>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div class="space-y-6 lg:col-span-2">
+            <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                <h2 class="mb-4 text-sm font-medium text-slate-300">Networking</h2>
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                    {% for label, value in [
+                        ('Management IP', node.ip_address or '—'),
+                        ('Netmask', node.netmask or '—'),
+                        ('Gateway', node.gateway or '—'),
+                        ('VLAN', node.vlan or '—'),
+                        ('DNS', node.dns or '—'),
+                        ('Bridge', node.bridge or '—'),
+                    ] %}
+                    <div class="flex justify-between border-b border-slate-800/60 pb-2">
+                        <dt class="text-slate-500">{{ label }}</dt>
+                        <dd class="font-mono text-slate-300">{{ value }}</dd>
+                    </div>
+                    {% endfor %}
+                </dl>
+            </section>
+
+            <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                <h2 class="mb-4 text-sm font-medium text-slate-300">Reported hardware</h2>
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+                    <div class="border-b border-slate-800/60 pb-2">
+                        <dt class="text-slate-500">CPU</dt>
+                        <dd class="mt-1 text-slate-300">{{ node.cpu_model or '—' }}</dd>
+                    </div>
+                    <div class="border-b border-slate-800/60 pb-2">
+                        <dt class="text-slate-500">vCPU</dt>
+                        <dd class="mt-1 text-slate-300">{{ node.cpu_count or '—' }}</dd>
+                    </div>
+                    <div class="border-b border-slate-800/60 pb-2">
+                        <dt class="text-slate-500">RAM</dt>
+                        <dd class="mt-1 text-slate-300">{{ (node.ram_gb ~ ' GB') if node.ram_gb else '—' }}</dd>
+                    </div>
+                </dl>
+                <p class="mt-3 text-xs text-slate-600">Last report: {{ node.last_report_at|datetime }}</p>
+            </section>
+
+            <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                <h2 class="mb-4 text-sm font-medium text-slate-300">Advanced configuration</h2>
+                {% for label, value in [
+                    ('Storage', node.get('storage_config', [])),
+                    ('VMs', node.get('vm_config', [])),
+                    ('Network', node.get('network_config', {})),
+                ] %}
+                <p class="mb-1 mt-3 text-xs uppercase tracking-wide text-slate-600">{{ label }}</p>
+                <pre class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-300">{{ value | tojson(indent=2) }}</pre>
+                {% endfor %}
+            </section>
+        </div>
+
+        <div class="space-y-6">
+            <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                <h2 class="mb-4 text-sm font-medium text-slate-300">Cluster</h2>
+                {% if node.cluster %}
+                <div class="text-sm text-slate-300">{{ node.cluster.name }}</div>
+                <div class="mt-1 text-xs text-slate-500">Quorum expected: {{ node.cluster.quorum_expected }}</div>
+                <div class="mt-1 text-xs text-slate-500">Corosync node ID: {{ node.corosync_node_id or '—' }}</div>
+                {% else %}
+                <p class="text-sm text-slate-500">Not assigned to a cluster.</p>
+                {% endif %}
+            </section>
+
+            <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                <h2 class="mb-4 text-sm font-medium text-slate-300">Boot history</h2>
+                {% if events %}
+                <ul class="space-y-3">
+                    {% for event in events %}
+                    <li class="border-b border-slate-800/60 pb-2 text-xs last:border-0">
+                        <div class="font-mono text-slate-300">{{ event.ip_address or event.mac_address }}</div>
+                        <div class="mt-0.5 text-slate-500">
+                            {{ event.cpu_count or '?' }} vCPU · {{ event.ram_gb or '?' }} GB · {{ event.created_at|datetime }}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-sm text-slate-500">No boot reports yet.</p>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}
