@@ -78,6 +78,10 @@ class BootReport:
                 "last_boot_at": now_iso(),
             }
         )
+        # A node that reports in is at least being configured; it is promoted to
+        # "configured" once the agent confirms a clean apply (see the WS hub).
+        if (node.get("status") or "pending") == "pending":
+            node.update({"status": "configuring"})
         return {"status": "registered", "node": NodeConfig.summary(node), "config": NodeConfig.for_node(node)}
 
     @classmethod

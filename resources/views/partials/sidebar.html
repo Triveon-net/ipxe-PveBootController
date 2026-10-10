@@ -1,4 +1,4 @@
-{% macro nav(label, url, icon, key) %}
+{% macro nav(label, url, icon, key, active) %}
 <a href="{{ url }}"
    data-nav="{{ key }}"
    hx-get="{{ url }}"
@@ -21,13 +21,13 @@
     </div>
 
     <nav class="flex-1 space-y-1 px-3 py-4">
-        {{ nav('Dashboard', url_for('dashboard'), 'fa-gauge-high', 'dashboard') }}
-        {{ nav('Nodes', url_for('nodes.index'), 'fa-server', 'nodes') }}
-        {{ nav('VMs', url_for('vms.index'), 'fa-hard-drive', 'vms') }}
-        {{ nav('Storage', url_for('storage.index'), 'fa-hard-drive', 'storage') }}
-        {{ nav('Clusters', url_for('clusters.index'), 'fa-circle-nodes', 'clusters') }}
-        {{ nav('Boot', url_for('boot.index'), 'fa-bolt', 'boot') }}
-        {{ nav('Settings', url_for('settings.index'), 'fa-sliders', 'settings') }}
+        {{ nav('Dashboard', url_for('dashboard'), 'fa-gauge-high', 'dashboard', active) }}
+        {{ nav('Nodes', url_for('nodes.index'), 'fa-server', 'nodes', active) }}
+        {{ nav('VMs', url_for('vms.index'), 'fa-hard-drive', 'vms', active) }}
+        {{ nav('Storage', url_for('storage.index'), 'fa-hard-drive', 'storage', active) }}
+        {{ nav('Clusters', url_for('clusters.index'), 'fa-circle-nodes', 'clusters', active) }}
+        {{ nav('Boot', url_for('boot.index'), 'fa-bolt', 'boot', active) }}
+        {{ nav('Settings', url_for('settings.index'), 'fa-sliders', 'settings', active) }}
     </nav>
 
     <div class="border-t border-slate-800 p-4 text-xs text-slate-500">
