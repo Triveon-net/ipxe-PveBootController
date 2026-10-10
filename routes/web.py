@@ -20,6 +20,11 @@ def register(router) -> None:
 
     with router.group(middleware=("csrf", "auth")):
         router.get("/dashboard", "DashboardController@index").name("dashboard")
+        router.get("/dashboard/metrics", "DashboardController@metrics").name("dashboard.metrics")
+
+        # VMs (paginated node list -> VMs per node)
+        router.get("/vms", "VmsController@index").name("vms.index")
+        router.get("/vms/<int:node_id>", "VmsController@show").name("vms.show")
 
         # Nodes
         router.get("/nodes", "NodesController@index").name("nodes.index")
@@ -63,6 +68,9 @@ def register(router) -> None:
         router.get("/storage", "StorageController@index").name("storage.index")
         router.post("/storage", "StorageController@store").name("storage.store")
         router.get("/storage/exports", "StorageController@exports").name("storage.exports")
+        router.post("/storage/<int:storage_id>", "StorageController@update").name(
+            "storage.update"
+        )
         router.post("/storage/<int:storage_id>/check", "StorageController@check").name(
             "storage.check"
         )

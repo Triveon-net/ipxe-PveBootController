@@ -129,7 +129,9 @@ scripts/                 # CLI command modules
    (name, IP, networking, cluster, Corosync, storage, VMs) over the same socket.
    It **keeps the socket open**, so when you change a node/cluster/storage in the
    panel the fresh config is pushed immediately — no polling. Nodes whose agent
-   is connected show a green **live** badge under **Nodes**.
+   is connected show a green **live** badge under **Nodes**. Connected agents
+   also report **CPU/RAM usage every 5 seconds**; the dashboard aggregates it
+   into live fleet totals (CPU sum/average, RAM used/total and a per-node view).
 
 HTTP `POST /api/boot/report` still works as a fallback (and for `pve-report.sh`);
 the Python agent only uses it with `--http`.
@@ -166,7 +168,9 @@ API in `config.storages`.
 | `GET` | `/api/health` | Liveness check |
 | `POST` | `/api/boot/report` | Node reports hardware + gets its config |
 | `GET` | `/api/boot/config/<mac>` | Fetch a node's config by MAC |
-| `GET` | `/api/nodes` | Read-only list of configured nodes |
+| `GET` | `/api/nodes` | Read-only list of nodes (`?page=`, `?q=`, 50/page) |
+| `GET` | `/api/vms` | Paged node list with VM counts (`?page=`, `?q=`, 50/page) |
+| `GET` | `/api/vms/<node_id>` | Paged VM list of a node incl. raw configs |
 | `WS` | `/agent` (same port as HTTP) | Persistent agent socket: hardware in, config pushes out |
 | `GET` | `/boot.ipxe` | iPXE boot script |
 | `GET` | `/bootfiles/<name>` | Uploaded boot file (vmlinuz, initrd, squashfs, …) |
@@ -195,9 +199,11 @@ assigned to it — no manual editing. Open a cluster in the panel
 * **`config_version`** — bumped automatically whenever the topology changes
   (node added/removed, ID or ring address changed) so Corosync reloads.
 * **Ring address** — defaults to the node's management IP; override per node
-  with ``{"corosync_ring0_addr": "10.10.0.5"}`` in the node's Network JSON.
-* Other `totem`/`logging`/`quorum` values can be overridden via the cluster's
-  Corosync JSON (e.g. `token_coefficient`, `link_mode`, `secauth`).
+  with the **Corosync ring0 address** field on the node form.
+* **Quorum votes** — per node via the node form (default 1).
+* Other `totem`/`logging`/`quorum` values are auto-generated; for full control
+  paste a complete `corosync.conf` into the cluster's **Corosync config** field
+  (1:1 syntax). When set it is used verbatim; leave it empty to auto-generate.
 
 Example output for two nodes:
 
@@ -245,6 +251,10 @@ The generated config is also returned by the boot API in
 `/etc/pve/corosync.conf` during provisioning. You can fetch it directly at
 `GET /clusters/<id>/corosync.conf` (append `?download=1` for an attachment).
 
+On a node, the **Storage config** and **Network config** fields also take raw
+PVE syntax (`/etc/pve/storage.cfg` and `/etc/network/interfaces`); the agent
+appends them to those files. Only **VMs** stays a JSON array.
+
 #### Cluster secrets (shared identity material)
 
 Corosync refuses to start without `/etc/corosync/authkey`, and a Proxmox cluster
@@ -266,6 +276,26 @@ back in:
 
 Private keys are marked `hidden` on the models and never appear in panel/JSON
 payloads. Open a cluster to see the secret status summary.
+
+### VMs (config sync + restore)
+
+A connected agent reports the VMs it hosts, the panel stores them **per node**,
+and the agent restores any that are missing when it applies its config:
+
+* **Pull** — the agent reads `/etc/pve/qemu-server/<vmid>.conf` (standalone) and,
+  in a cluster, also `/etc/pve/nodes/<node>/qemu-server/<vmid>.conf`, then sends
+  `{"type":"vms", …}` over the WebSocket on connect.
+* **Store** — VMIDs are only unique **per node**, so the identity is
+  `(node_id, vmid)`. Two standalone nodes (e.g. `pve01`/`pve02`) may both host a
+  VM 100 without clashing; `cluster_id` is stored as a snapshot.
+* **Restore** — the config payload carries `vm_configs`; on apply the agent
+  writes back any VM config that is **missing** (existing files are never
+  overwritten, so a running VM is safe).
+
+The **VMs** tab lists nodes (50 per page, searchable); clicking a node drills
+into its VMs (50 per page, searchable by VM ID/name, each with a collapsible raw
+config). The JSON API (`/api/vms`, `/api/vms/<node_id>`) is paged the same way
+and capped at 50 per page.
 
 ### Boot script (iPXE)
 
@@ -317,13 +347,17 @@ MAC/CPU/cores/RAM and then **applies** the returned configuration:
   occurrences, keeps/updates the management-IP mapping), `/etc/mailname`,
   `/etc/postfix/main.cf` and the history dirs under `/var/lib/rrdcached/db/`
 * management network (`/etc/network/interfaces`, `/etc/resolv.conf`) —
-  static IP/netmask/gateway, optional VLAN, bridge (`vmbr0`, …)
+  static IP/netmask/gateway, optional VLAN, bridge (`vmbr0`, …). The bridge
+  **port** is the physical NIC: the node's *Bridge port* field, else the NIC the
+  agent detected (it excludes bridges/`vmbrX`, so `bridge-ports` is never the
+  bridge itself). The agent reports that NIC, which pre-fills the field.
 * Corosync/cluster (`/etc/pve/corosync.conf`, the shared
   `/etc/corosync/authkey`, renaming the node inside it too)
 * SSH identity + cluster trust (`/root/.ssh/*`,
   `/etc/pve/priv/authorized_keys`, `/etc/pve/priv/known_hosts`)
 * Cluster `/etc/hosts` replication
 * NFS storages (`/etc/pve/storage.cfg`)
+* Missing VM configs (`/etc/pve/qemu-server/<vmid>.conf`)
 * PVE certificates + daemons: `pvecm updatecerts --force` and
   `systemctl restart pve-cluster pvedaemon pveproxy pvestatd` (run last, only on
 a booted Proxmox system)
@@ -361,16 +395,20 @@ systemctl daemon-reload
 systemctl enable --now pve-agent.service
 ```
 
-The unit is `Type=simple` and runs `pve-agent.py` with no arguments. The agent
-**opens a persistent WebSocket** to the controller and waits for configuration
-pushes (it never polls). It reconnects automatically with exponential backoff
-and only re-applies when the pushed config changes. Pass `--once` (or set
-`PVE_ONCE=true`) for a single HTTP report, or `--http` to force the legacy HTTP
-polling loop. The agent **auto-loads `pve-agent.conf`** — no need to export
-anything. It is searched in this order (first hit wins): `--conf PATH` (or
-`PVE_CONF`), `/etc/pve-agent.conf`, then `pve-agent.conf` / `agent.conf` /
-`pve.conf` next to the script or in the current directory. So dropping the file
-next to `agent.py` is enough to run it manually.
+The unit is `Type=simple` and runs `pve-agent.py` with no arguments. At startup
+the agent waits (retrying every 5s) until the provisioning NIC/MAC is available —
+a slow NIC no longer aborts it — then **requests the full configuration and
+applies it**, including the management network (`ip`/netmask/gateway/bridge),
+the extra `/etc/network/interfaces` and DNS. After that it **opens a persistent
+WebSocket** to the controller and waits for configuration pushes (it never
+polls). It reconnects automatically with exponential backoff and only re-applies
+when the pushed config changes. Pass `--once` (or set `PVE_ONCE=true`) for a
+single HTTP report, or `--http` to force the legacy HTTP polling loop. The agent
+**auto-loads `pve-agent.conf`** — no need to export anything. It is searched in
+this order (first hit wins): `--conf PATH` (or `PVE_CONF`),
+`/etc/pve-agent.conf`, then `pve-agent.conf` / `agent.conf` / `pve.conf` next to
+the script or in the current directory. So dropping the file next to `agent.py`
+is enough to run it manually.
 
 Supported keys (precedence: command line → real environment → this file → kernel
 cmdline):

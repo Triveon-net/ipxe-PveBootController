@@ -20,15 +20,28 @@ STATUS_LABELS = {
 class Node(Model):
     table = "nodes"
     casts = {
-        "storage_config": "json",
         "vm_config": "json",
-        "network_config": "json",
     }
     hidden = ("ssh_private_key", "ssh_host_private_key")
 
     @classmethod
     def find_by_mac(cls, mac: str) -> "Node | None":
         return cls.where("mac_address", mac).first()
+
+    @classmethod
+    def page(cls, search: str, limit: int, offset: int) -> tuple[int, list["Node"]]:
+        where = ""
+        params: list = []
+        if search:
+            where = " WHERE name LIKE ? OR ip_address LIKE ? OR mac_address LIKE ?"
+            like = f"%{search}%"
+            params = [like, like, like]
+        total = int(cls.db().scalar(f"SELECT COUNT(*) FROM nodes{where}", params, 0))
+        rows = cls.db().query(
+            f"SELECT * FROM nodes{where} ORDER BY name LIMIT ? OFFSET ?",
+            params + [limit, offset],
+        )
+        return total, [cls.hydrate(row) for row in rows]
 
     @property
     def status_label(self) -> str:

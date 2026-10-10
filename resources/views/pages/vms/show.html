@@ -1,0 +1,64 @@
+{% from 'partials/ui.html' import empty_state, status_badge %}
+{% extends layout %}
+{% block title %}{{ node.name }} · VMs{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-5xl">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <a href="{{ url_for('vms.index') }}"
+               hx-get="{{ url_for('vms.index') }}" hx-target="#app-content" hx-push-url="true"
+               class="text-xs text-slate-500 hover:text-slate-300"><i class="fa-solid fa-arrow-left mr-1"></i>VMs</a>
+            <h1 id="page-title" class="mt-2 flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-100">
+                <i class="fa-solid fa-hard-drive text-brand-400"></i>{{ node.name }}
+            </h1>
+            <p class="mt-1 flex items-center gap-3 text-sm text-slate-500">
+                <span>{{ status_badge(node.status) }}</span>
+                <span class="font-mono">{{ node.ip_address or '—' }}</span>
+                <span>{{ pager.total }} VM(s)</span>
+            </p>
+        </div>
+        <form hx-get="{{ url_for('vms.show', node_id=node.id) }}" hx-target="#app-content" hx-push-url="true"
+              class="flex items-center gap-2">
+            <input name="q" value="{{ search }}" placeholder="Search VM ID or name…"
+                   class="w-56 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500">
+            <button type="submit"
+                    class="rounded-lg border border-slate-800 px-3 py-2 text-sm text-slate-300 transition hover:border-slate-700 hover:text-white">
+                <i class="fa-solid fa-magnifying-glass"></i>
+            </button>
+        </form>
+    </div>
+
+    {% if vms %}
+    <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-5 py-3 font-medium">VM ID</th>
+                    <th class="px-5 py-3 font-medium">Name</th>
+                    <th class="px-5 py-3 font-medium">Last synced</th>
+                    <th class="px-5 py-3 text-right font-medium">Config</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for vm in vms %}
+                <tr class="transition hover:bg-slate-800/30">
+                    <td class="px-5 py-3 font-mono text-slate-200">{{ vm.vmid }}</td>
+                    <td class="px-5 py-3 text-slate-300">{{ vm.name or '—' }}</td>
+                    <td class="px-5 py-3 text-xs text-slate-500">{{ vm.synced_at|datetime }}</td>
+                    <td class="px-5 py-3">
+                        <details class="group">
+                            <summary class="cursor-pointer list-none text-right text-xs text-brand-400 hover:text-brand-300">view</summary>
+                            <pre class="mt-2 max-h-96 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-left font-mono text-xs text-slate-300">{{ vm.config }}</pre>
+                        </details>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% include 'partials/pagination.html' %}
+    </div>
+    {% else %}
+    {{ empty_state('fa-hard-drive', 'No VMs reported', 'This node reports its VM configs over the WebSocket on connect.') }}
+    {% endif %}
+</div>
+{% endblock %}

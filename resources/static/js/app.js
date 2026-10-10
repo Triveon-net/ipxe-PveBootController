@@ -72,6 +72,7 @@
 
     function navKeyForPath(path) {
         if (path.indexOf("/nodes") === 0) return "nodes";
+        if (path.indexOf("/vms") === 0) return "vms";
         if (path.indexOf("/storage") === 0) return "storage";
         if (path.indexOf("/clusters") === 0) return "clusters";
         if (path.indexOf("/boot") === 0) return "boot";
@@ -89,9 +90,21 @@
         });
     }
 
+    // Live boot-script preview. The renderer lives in boot-preview.js (mirrors
+    // the Python BootConfig.render); the server stays authoritative on save.
+    function updateBootPreview() {
+        var form = document.getElementById("boot-form");
+        var pre = document.getElementById("boot-preview");
+        if (!form || !pre || !window.bootRenderScript) {
+            return;
+        }
+        pre.textContent = window.bootRenderScript(form, pre.dataset.controllerDefault || "");
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         updateDocumentTitle();
         updateSidebarActive();
+        updateBootPreview();
         document.querySelectorAll("[data-flash]").forEach(dismissFlash);
 
         // Validation errors are returned with HTTP 422; tell HTMX to swap them
@@ -128,12 +141,14 @@
                 evt.detail.target.classList.remove("htmx-swapping");
             }
             updateSidebarActive();
+            updateBootPreview();
         });
 
         // Back/forward navigation restores content from HTMX's history cache.
         document.body.addEventListener("htmx:historyRestore", function () {
             updateDocumentTitle();
             updateSidebarActive();
+            updateBootPreview();
         });
 
         // Write actions (delete/reject/save/...) return an `app:flash` trigger
@@ -152,6 +167,17 @@
                 }
             });
         });
+    });
+
+    // Instant boot-script preview while typing (delegated, survives HTMX swaps).
+    function isBootField(target) {
+        return target && target.closest && target.closest("#boot-form");
+    }
+    document.addEventListener("input", function (evt) {
+        if (isBootField(evt.target)) updateBootPreview();
+    });
+    document.addEventListener("change", function (evt) {
+        if (isBootField(evt.target)) updateBootPreview();
     });
 
     // Copy-to-clipboard for elements marked with `data-copy-target` (works for

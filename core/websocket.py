@@ -42,6 +42,28 @@ def _clean_mac(value: object) -> str:
     return str(value or "").strip().lower()
 
 
+def _store_vms_for(mac: str, items: object, prune: bool = True) -> None:
+    """Persist the VM set a node reported (keyed by node + vmid).
+
+    ``prune`` is False while a node is still within its boot grace window: the
+    report is merged (add/update only) so a freshly reset node whose
+    `/etc/pve/qemu-server` is still empty cannot wipe the stored VMs before the
+    restore config has been pushed.
+    """
+    if not isinstance(items, list):
+        return
+    from resources.app.models.node import Node
+    from resources.app.models.vm import Vm
+
+    node = Node.find_by_mac(mac)
+    if node is None:
+        return
+    if prune:
+        Vm.replace_for_node(node.id, node.cluster_id, items[:5000])
+    else:
+        Vm.upsert_for_node(node.id, node.cluster_id, items[:5000])
+
+
 class WebSocketClosed(Exception):
     pass
 
@@ -128,6 +150,7 @@ class AgentHub:
 
     def __init__(self) -> None:
         self._connections: dict[str, AgentConnection] = {}
+        self._metrics: dict[str, dict] = {}
         self._lock = threading.Lock()
 
     # -- registry -----------------------------------------------------------
@@ -154,6 +177,17 @@ class AgentHub:
         with self._lock:
             if self._connections.get(conn.mac) is conn:
                 self._connections.pop(conn.mac, None)
+                self._metrics.pop(conn.mac, None)
+
+    # -- live metrics -------------------------------------------------------
+    def update_metrics(self, mac: str, data: dict) -> None:
+        mac = _clean_mac(mac)
+        with self._lock:
+            self._metrics[mac] = data
+
+    def metrics(self) -> dict[str, dict]:
+        with self._lock:
+            return dict(self._metrics)
 
     # -- server -> agent pushes --------------------------------------------
     def notify_macs(self, macs: Iterable[str]) -> None:
@@ -239,7 +273,9 @@ class AgentHub:
                 return
             conn.mac = mac
             conn.hardware = boot_report.hardware_from(message)
-            conn.send(_to_message(boot_report.record(mac, conn.hardware)))
+            # No config in the handshake reply: the agent reports its VM set next
+            # (before requesting the full config), so the DB is fresh by then.
+            conn.send(_to_message(boot_report.record(mac, conn.hardware), include_config=False))
             self._register(conn)
             log.info("agent connected: %s", mac)
 
@@ -249,6 +285,18 @@ class AgentHub:
             conn.hardware = boot_report.hardware_from(message.get("hardware") or message)
             conn.send(_to_message(boot_report.record(conn.mac, conn.hardware)))
 
+        elif kind == "sync":
+            # The agent asks for everything it can get on (re)connect.
+            if conn.mac:
+                conn.send(_to_message(boot_report.state(conn.mac)))
+
+        elif kind == "vms":
+            if not conn.mac:
+                return
+            conn.last_seen = now_iso()
+            # Agents send prune=False during their boot grace window.
+            self._store_vms(conn.mac, message.get("vms"), bool(message.get("prune", True)))
+
         elif kind == "status":
             log.info(
                 "agent %s status: %s %s",
@@ -257,8 +305,17 @@ class AgentHub:
                 message.get("message") or "",
             )
 
+        elif kind == "metrics":
+            if not conn.mac:
+                return
+            conn.last_seen = now_iso()
+            self.update_metrics(conn.mac, _clean_metrics(message))
+
         elif kind == "ping":
             conn.send({"type": "pong"})
+
+    def _store_vms(self, mac: str, items: object, prune: bool = True) -> None:
+        _store_vms_for(mac, items, prune)
 
 
 def _close_db() -> None:
@@ -270,8 +327,33 @@ def _close_db() -> None:
         pass
 
 
-def _to_message(result: dict) -> dict:
-    """Translate a BootReport result into an agent message."""
+def _num(value: object, low: float = 0.0, high: float = 1e9) -> float:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    return max(low, min(high, number))
+
+
+def _clean_metrics(message: dict) -> dict:
+    """Clamp agent-reported values so a bad payload cannot skew the panel."""
+    return {
+        "cpu_percent": round(_num(message.get("cpu_percent"), 0.0, 100.0), 1),
+        "ram_percent": round(_num(message.get("ram_percent"), 0.0, 100.0), 1),
+        "ram_used_gb": round(_num(message.get("ram_used_gb")), 1),
+        "ram_total_gb": round(_num(message.get("ram_total_gb")), 1),
+        "at": now_iso(),
+    }
+
+
+def _to_message(result: dict, include_config: bool = True) -> dict:
+    """Translate a BootReport result into an agent message.
+
+    ``include_config`` is disabled for the handshake reply: the agent reports its
+    VM set right after ``hello``, so deferring the config until then guarantees
+    deleted VMs are already dropped from the DB before the restore payload is
+    built (otherwise the agent would recreate them on boot).
+    """
     status = result.get("status")
     if status == "rejected":
         return {"type": "rejected", "message": result.get("message") or "rejected"}
@@ -281,6 +363,8 @@ def _to_message(result: dict) -> dict:
             "message": result.get("message") or "not registered",
             "mac_address": result.get("mac_address"),
         }
+    if not include_config:
+        return {"type": "status", "state": "registered"}
     return {"type": "config", "node": result.get("node"), "config": result.get("config")}
 
 

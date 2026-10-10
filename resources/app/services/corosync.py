@@ -77,13 +77,21 @@ class CorosyncConfigGenerator:
 
     # -- public API ---------------------------------------------------------
     def sync(self, cluster) -> str:
-        """Ensure the config is current (bumping version if needed) and render.
+        """Return the effective corosync.conf for a cluster.
 
-        Called when displaying or serving the config so the file always matches
-        the current set of nodes.
+        If the operator pasted a raw config (`corosync_config`), it is used
+        verbatim. Otherwise the config is auto-generated from the current nodes
+        (with a version that bumps whenever the topology changes).
         """
+        raw = (cluster.get("corosync_config") or "").strip()
+        # Rows from before the raw-syntax switch carry the legacy JSON default
+        # "{}" (and "[]"); that is not a real config, so fall through to the
+        # generated one instead of shipping a literal "{}".
+        if raw and raw[0] not in "{[":
+            return raw if raw.endswith("\n") else raw + "\n"
+
         nodes = cluster.nodes()
-        options = dict(cluster.get("corosync_config") or {})
+        options = dict(cluster.get("corosync_state") or {})
         assigned = self.assign_node_ids(nodes)
         signature = self._signature(cluster, nodes, assigned)
 
@@ -91,7 +99,7 @@ class CorosyncConfigGenerator:
             current = int(options.get("config_version") or 0)
             options["config_version"] = current + 1
             options["topology"] = signature
-            cluster.update({"corosync_config": options})
+            cluster.update({"corosync_state": options})
 
         return self.render(cluster, nodes, assigned, options)
 
@@ -169,18 +177,13 @@ class CorosyncConfigGenerator:
         return explicit
 
     def _quorum_votes(self, node) -> int:
-        network = node.get("network_config") or {}
-        raw = network.get("quorum_votes", 1) if isinstance(network, dict) else 1
         try:
-            return int(raw)
+            return max(1, int(node.get("quorum_votes") or 1))
         except (TypeError, ValueError):
             return 1
 
     def _ring0_addr(self, node) -> str:
-        network = node.get("network_config") or {}
-        candidate = None
-        if isinstance(network, dict):
-            candidate = network.get("corosync_ring0_addr") or network.get("ring0_addr")
+        candidate = node.get("corosync_ring0_addr") or ""
         if candidate:
             try:
                 return Validator.ipv4(candidate)

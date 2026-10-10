@@ -1,0 +1,56 @@
+{% from 'partials/ui.html' import empty_state %}
+<div class="flex items-center justify-between border-b border-slate-800 px-5 py-3">
+    <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-gauge-high mr-2 text-brand-400"></i>Live resource usage</h2>
+    <span class="text-xs text-slate-500">
+        {% if fleet.count %}{{ fleet.count }} node(s) reporting · every 5s{% else %}no live data{% endif %}
+    </span>
+</div>
+{% if fleet.count %}
+<div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
+    <div class="rounded-lg border border-slate-800 bg-slate-950 p-4">
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-slate-400">CPU</span>
+            <span class="text-xs text-slate-500">sum {{ '%.1f'|format(fleet.cpu_sum) }}%</span>
+        </div>
+        <div class="mt-2 text-3xl font-semibold tracking-tight text-slate-100">{{ '%.1f'|format(fleet.cpu_avg) }}%</div>
+        <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+            <div class="h-full rounded-full bg-brand-500" style="width: {{ [fleet.cpu_avg, 100]|min }}%"></div>
+        </div>
+        <div class="mt-1 text-xs text-slate-600">average across {{ fleet.count }} node(s)</div>
+    </div>
+    <div class="rounded-lg border border-slate-800 bg-slate-950 p-4">
+        <div class="flex items-center justify-between">
+            <span class="text-sm text-slate-400">RAM</span>
+            <span class="text-xs text-slate-500">{{ '%.1f'|format(fleet.ram_used_gb) }} / {{ '%.1f'|format(fleet.ram_total_gb) }} GB</span>
+        </div>
+        <div class="mt-2 text-3xl font-semibold tracking-tight text-slate-100">{{ '%.1f'|format(fleet.ram_percent) }}%</div>
+        <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+            <div class="h-full rounded-full bg-sky-500" style="width: {{ [fleet.ram_percent, 100]|min }}%"></div>
+        </div>
+        <div class="mt-1 text-xs text-slate-600">fleet total</div>
+    </div>
+</div>
+<ul class="divide-y divide-slate-800 border-t border-slate-800">
+    {% for row in fleet.rows %}
+    <li class="flex flex-wrap items-center gap-4 px-5 py-2.5 text-sm">
+        <span class="w-40 shrink-0 truncate text-slate-300">{{ row.name }}</span>
+        <div class="flex min-w-[12rem] flex-1 items-center gap-2">
+            <span class="w-10 shrink-0 text-right text-xs text-slate-500">CPU</span>
+            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
+                <div class="h-full rounded-full bg-brand-500" style="width: {{ [row.cpu_percent, 100]|min }}%"></div>
+            </div>
+            <span class="w-12 shrink-0 text-right font-mono text-xs text-slate-400">{{ '%.0f'|format(row.cpu_percent) }}%</span>
+        </div>
+        <div class="flex min-w-[12rem] flex-1 items-center gap-2">
+            <span class="w-10 shrink-0 text-right text-xs text-slate-500">RAM</span>
+            <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
+                <div class="h-full rounded-full bg-sky-500" style="width: {{ [row.ram_percent, 100]|min }}%"></div>
+            </div>
+            <span class="w-24 shrink-0 text-right font-mono text-xs text-slate-400">{{ '%.1f'|format(row.ram_used_gb) }}/{{ '%.0f'|format(row.ram_total_gb) }} GB</span>
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<div class="p-5">{{ empty_state('fa-gauge-high', 'No live metrics yet', 'Connected nodes report CPU and RAM every 5 seconds over the WebSocket.') }}</div>
+{% endif %}

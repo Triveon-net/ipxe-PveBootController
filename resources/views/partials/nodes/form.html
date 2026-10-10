@@ -67,6 +67,12 @@
                 <input id="bridge" name="bridge" value="{{ values.bridge }}" placeholder="vmbr0" class="{{ input_class }}">
                 {{ err('bridge') }}
             </div>
+            <div>
+                <label class="{{ label_class }}" for="bridge_port">Bridge port (NIC)</label>
+                <input id="bridge_port" name="bridge_port" value="{{ values.bridge_port }}" placeholder="enp2s0" class="{{ input_class }} font-mono">
+                <p class="mt-1 text-xs text-slate-500">Physical NIC the bridge uses (<code class="font-mono">bridge-ports</code>). Empty = auto-detect.</p>
+                {{ err('bridge_port') }}
+            </div>
         </div>
     </section>
 
@@ -88,6 +94,17 @@
                 <label class="{{ label_class }}" for="corosync_node_id">Corosync node ID</label>
                 <input id="corosync_node_id" name="corosync_node_id" value="{{ values.corosync_node_id }}" placeholder="1" class="{{ input_class }}">
                 {{ err('corosync_node_id') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="corosync_ring0_addr">Corosync ring0 address (optional)</label>
+                <input id="corosync_ring0_addr" name="corosync_ring0_addr" value="{{ values.corosync_ring0_addr }}" placeholder="10.10.0.5" class="{{ input_class }} font-mono">
+                <p class="mt-1 text-xs text-slate-500">Defaults to the management IP.</p>
+                {{ err('corosync_ring0_addr') }}
+            </div>
+            <div>
+                <label class="{{ label_class }}" for="quorum_votes">Quorum votes</label>
+                <input id="quorum_votes" name="quorum_votes" type="number" min="1" value="{{ values.quorum_votes }}" class="{{ input_class }}">
+                {{ err('quorum_votes') }}
             </div>
         </div>
     </section>
@@ -126,8 +143,9 @@
         <p class="mb-4 text-xs text-slate-500">JSON applied by the node's provisioning agent. Stored safely and returned by the boot API.</p>
         <div class="space-y-4">
             <div>
-                <label class="{{ label_class }}" for="storage_config">Storage (JSON array)</label>
-                <textarea id="storage_config" name="storage_config" rows="4"
+                <label class="{{ label_class }}" for="storage_config">Storage config (/etc/pve/storage.cfg)</label>
+                <textarea id="storage_config" name="storage_config" rows="6"
+                          placeholder="dir: local&#10;\tpath /var/lib/vz&#10;\tcontent iso,vztmpl,backup&#10;&#10;nfs: data&#10;\tserver 10.0.0.20&#10;\texport /mnt/data"
                           class="{{ input_class }} font-mono text-xs">{{ values.storage_config }}</textarea>
                 {{ err('storage_config') }}
             </div>
@@ -138,8 +156,9 @@
                 {{ err('vm_config') }}
             </div>
             <div>
-                <label class="{{ label_class }}" for="network_config">Network (JSON object)</label>
-                <textarea id="network_config" name="network_config" rows="4"
+                <label class="{{ label_class }}" for="network_config">Network config (/etc/network/interfaces)</label>
+                <textarea id="network_config" name="network_config" rows="6"
+                          placeholder="auto vmbr1&#10;iface vmbr1 inet manual&#10;\tbridge-ports enp3s0&#10;\tbridge-stp off&#10;\tbridge-fd 0"
                           class="{{ input_class }} font-mono text-xs">{{ values.network_config }}</textarea>
                 {{ err('network_config') }}
             </div>

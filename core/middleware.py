@@ -118,7 +118,11 @@ class Authenticate(Middleware):
         if auth.check():
             return next_handler(request)
 
-        if _wants_json(request):
+        # JSON and HTMX callers get a 401 instead of a 302: HTMX would otherwise
+        # follow the redirect and inject the login page into the current content
+        # region (sidebar still visible). The client turns 401 into a real
+        # navigation to /login (see resources/static/js/app.js).
+        if _wants_json(request) or _is_htmx(request):
             raise ApiException("Unauthenticated.", status_code=401)
 
         from core.context import get_context
@@ -166,6 +170,10 @@ def _wants_json(request) -> bool:
         return True
     accept = request.headers.get("Accept", "")
     return "application/json" in accept and "text/html" not in accept
+
+
+def _is_htmx(request) -> bool:
+    return request.headers.get("HX-Request", "").lower() == "true"
 
 
 def error_response(app, request, status: int, message: str) -> Response:

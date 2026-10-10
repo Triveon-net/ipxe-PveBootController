@@ -22,11 +22,14 @@ RULES = {
     "vlan": "nullable|vlan",
     "dns": "nullable|string|max:255",
     "bridge": "nullable|string|max:32",
+    "bridge_port": "nullable|string|max:32",
     "cluster_id": "nullable|integer",
     "corosync_node_id": "nullable|integer",
-    "storage_config": "nullable|json_list",
+    "corosync_ring0_addr": "nullable|ipv4",
+    "quorum_votes": "nullable|integer|min:1|max:32",
+    "storage_config": "nullable|string|max:16384",
     "vm_config": "nullable|json_list",
-    "network_config": "nullable|json",
+    "network_config": "nullable|string|max:16384",
 }
 
 
@@ -99,6 +102,7 @@ class NodesController(Controller):
     def create(self, request):
         values = self._default_values()
         pending_report = None
+        pending_nic = ""
 
         mac = (request.args.get("mac") or "").strip()
         if mac:
@@ -111,6 +115,11 @@ class NodesController(Controller):
                 latest = BootEvent.latest_for_mac(mac)
                 if latest is not None:
                     pending_report = latest
+                    # Pre-fill the bridge port with the NIC the agent reported.
+                    payload = latest.get("payload")
+                    pending_nic = payload.get("nic") if isinstance(payload, dict) else ""
+                    if pending_nic:
+                        values["bridge_port"] = pending_nic
 
         return self.render_page(
             "pages/nodes/create.html",
@@ -122,6 +131,7 @@ class NodesController(Controller):
                 "storages": self._storages(),
                 "selected_storage_ids": [],
                 "pending_report": pending_report,
+                "pending_nic": pending_nic,
                 "active": "nodes",
             },
             request,
@@ -157,7 +167,7 @@ class NodesController(Controller):
         node = Node.create(self._normalise(data))
         Storage.sync_for_node(node.id, request.form.getlist("storage_ids"))
         RejectedNode.restore(node.mac_address)
-        self._push_config(node.mac_address)
+        self._push_related(node)
         self.flash(f"Node '{node.name}' created.", "success")
         return self._done(request, "/nodes")
 
@@ -172,9 +182,12 @@ class NodesController(Controller):
         if errors:
             return self._form_error(request, errors, request.form, node)
 
+        previous_cluster_id = node.cluster_id
         node.update(self._normalise(data))
         Storage.sync_for_node(node.id, request.form.getlist("storage_ids"))
-        self._push_config(node.mac_address)
+        # A node joining/leaving/changing a cluster changes every peer's Corosync
+        # topology, so notify the old and the new cluster as well.
+        self._push_related(node, previous_cluster_id)
         self.flash(f"Node '{node.name}' updated.", "success")
         return self._done(request, "/nodes")
 
@@ -182,8 +195,10 @@ class NodesController(Controller):
         node = self._find(node_id)
         name = node.name
         mac = node.mac_address
+        cluster_id = node.cluster_id
         node.delete()
-        self._push_config(mac)
+        # The remaining cluster members must drop the removed node from Corosync.
+        self._push_macs({mac} | self._cluster_macs(cluster_id))
         self.flash(f"Node '{name}' deleted.", "success")
         return self._done(request, "/nodes")
 
@@ -201,6 +216,32 @@ class NodesController(Controller):
         from core.websocket import get_hub
 
         get_hub().notify_macs([mac])
+
+    @classmethod
+    def _cluster_macs(cls, cluster_id) -> set[str]:
+        if not cluster_id:
+            return set()
+        return {node.mac_address for node in Node.where("cluster_id", cluster_id).get()}
+
+    @classmethod
+    def _push_related(cls, node: Node, also_cluster_id=None) -> None:
+        """Push a fresh config to the node and **every member** of its cluster(s).
+
+        Adding, moving or removing a node changes the Corosync topology of the
+        whole cluster, so all peers must receive the regenerated config.
+        """
+        macs = {node.mac_address}
+        macs |= cls._cluster_macs(node.cluster_id)
+        macs |= cls._cluster_macs(also_cluster_id)
+        cls._push_macs(macs)
+
+    @staticmethod
+    def _push_macs(macs) -> None:
+        if not macs:
+            return
+        from core.websocket import get_hub
+
+        get_hub().notify_macs(list(macs))
 
     @staticmethod
     def _find(node_id: int) -> Node:
@@ -251,11 +292,14 @@ class NodesController(Controller):
             "vlan": data.get("vlan"),
             "dns": data.get("dns") or "",
             "bridge": data.get("bridge") or "vmbr0",
+            "bridge_port": data.get("bridge_port") or "",
             "cluster_id": data.get("cluster_id"),
             "corosync_node_id": data.get("corosync_node_id"),
-            "storage_config": data.get("storage_config") or [],
+            "corosync_ring0_addr": data.get("corosync_ring0_addr") or "",
+            "quorum_votes": data.get("quorum_votes") or 1,
+            "storage_config": data.get("storage_config") or "",
             "vm_config": data.get("vm_config") or [],
-            "network_config": data.get("network_config") or {},
+            "network_config": data.get("network_config") or "",
         }
 
     @staticmethod
@@ -269,11 +313,14 @@ class NodesController(Controller):
             "vlan": "",
             "dns": "",
             "bridge": "vmbr0",
+            "bridge_port": "",
             "cluster_id": "",
             "corosync_node_id": "",
-            "storage_config": "[]",
+            "corosync_ring0_addr": "",
+            "quorum_votes": 1,
+            "storage_config": "",
             "vm_config": "[]",
-            "network_config": "{}",
+            "network_config": "",
         }
 
     @staticmethod
@@ -287,11 +334,14 @@ class NodesController(Controller):
             "vlan": "" if node.vlan is None else node.vlan,
             "dns": node.dns,
             "bridge": node.bridge,
+            "bridge_port": node.get("bridge_port", ""),
             "cluster_id": "" if node.cluster_id is None else node.cluster_id,
             "corosync_node_id": "" if node.corosync_node_id is None else node.corosync_node_id,
-            "storage_config": json.dumps(node.get("storage_config", []), indent=2),
+            "corosync_ring0_addr": node.get("corosync_ring0_addr", ""),
+            "quorum_votes": node.get("quorum_votes", 1),
+            "storage_config": node.get("storage_config", ""),
             "vm_config": json.dumps(node.get("vm_config", []), indent=2),
-            "network_config": json.dumps(node.get("network_config", {}), indent=2),
+            "network_config": node.get("network_config", ""),
         }
 
     def _form_error(self, request, errors, form, node):

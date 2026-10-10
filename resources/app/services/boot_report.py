@@ -73,6 +73,7 @@ class BootReport:
                 "cpu_model": hardware.get("cpu_model") or node.get("cpu_model", ""),
                 "cpu_count": hardware.get("cpu_count") or node.get("cpu_count", 0),
                 "ram_gb": hardware.get("ram_gb") or node.get("ram_gb", 0),
+                "detected_nic": hardware.get("nic") or node.get("detected_nic", ""),
                 "last_report_at": now_iso(),
                 "last_boot_at": now_iso(),
             }

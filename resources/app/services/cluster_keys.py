@@ -19,10 +19,51 @@ import secrets
 import shutil
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 
 AUTHKEY_BYTES = 128  # what `corosync-keygen` writes
 _SSH_KEYGEN = "ssh-keygen"
+_OPENSSL = "openssl"
+
+
+def _generate_root_ca(cluster_name: str) -> dict:
+    """Return ``{"key": pem, "pem": cert}`` for a fresh self-signed CA.
+
+    Mirrors the subject Proxmox uses so the material looks native. Returns empty
+    strings when ``openssl`` is unavailable (the node then falls back to its own
+    ``pvecm updatecerts`` behaviour).
+    """
+    if not shutil.which(_OPENSSL):
+        return {"key": "", "pem": ""}
+    subject = (
+        "/CN=Proxmox Virtual Environment"
+        f"/OU={uuid.uuid4()}"
+        "/O=PVE Cluster Manager CA"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        key_path = Path(tmp) / "pve-root-ca.key"
+        pem_path = Path(tmp) / "pve-root-ca.pem"
+        result = subprocess.run(
+            [
+                _OPENSSL, "req", "-batch", "-newkey", "rsa:2048", "-nodes",
+                "-days", "3650", "-x509", "-sha256",
+                "-addext", "basicConstraints=critical,CA:TRUE",
+                "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+                "-addext", "subjectKeyIdentifier=hash",
+                "-keyout", str(key_path), "-out", str(pem_path),
+                "-subj", subject,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {"key": "", "pem": ""}
+        return {
+            "key": key_path.read_text(encoding="utf-8"),
+            "pem": pem_path.read_text(encoding="utf-8"),
+        }
 
 
 def _generate_keypair(comment: str) -> tuple[str, str]:
@@ -63,6 +104,23 @@ class ClusterKeys:
         encoded = base64.b64encode(secrets.token_bytes(AUTHKEY_BYTES)).decode("ascii")
         cluster.update({"authkey": encoded})
         return encoded
+
+    # -- cluster root CA ----------------------------------------------------
+    @classmethod
+    def ensure_root_ca(cls, cluster) -> dict:
+        """Return the cluster's root CA (``key``/``pem``), generating it once.
+
+        The CA signs every node certificate; it must be identical on all nodes,
+        so the panel owns it just like the Corosync authkey.
+        """
+        key = cluster.get("root_ca_key") or ""
+        pem = cluster.get("root_ca_pem") or ""
+        if key and pem:
+            return {"key": key, "pem": pem}
+        material = _generate_root_ca(cluster.name)
+        if material["key"] and material["pem"]:
+            cluster.update({"root_ca_key": material["key"], "root_ca_pem": material["pem"]})
+        return material
 
     # -- per-node SSH keys --------------------------------------------------
     @classmethod
@@ -144,6 +202,7 @@ class ClusterKeys:
         keyed = sum(1 for n in nodes if n.get("ssh_public_key"))
         return {
             "authkey": bool(cluster.get("authkey")),
+            "root_ca": bool(cluster.get("root_ca_key")),
             "nodes": len(nodes),
             "keyed": keyed,
         }

@@ -1,2 +1,0 @@
-{% for export in exports %}<option value="{{ export }}"></option>{% endfor %}
-<span id="export-status" hx-swap-oob="innerHTML">{% if message %}{{ message }}{% elif exports %}{{ exports|length }} export(s) found — pick one or type your own.{% endif %}</span>

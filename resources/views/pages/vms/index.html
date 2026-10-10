@@ -1,0 +1,54 @@
+{% from 'partials/ui.html' import empty_state, status_badge %}
+{% extends layout %}
+{% block title %}VMs{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-6xl">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <h1 id="page-title" class="text-2xl font-semibold tracking-tight text-slate-100">VMs</h1>
+            <p class="mt-1 text-sm text-slate-500">Virtual machines reported by each node. VM IDs are unique per node.</p>
+        </div>
+        <form hx-get="{{ url_for('vms.index') }}" hx-target="#app-content" hx-push-url="true"
+              class="flex items-center gap-2">
+            <input name="q" value="{{ search }}" placeholder="Search nodes…"
+                   class="w-56 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500">
+            <button type="submit"
+                    class="rounded-lg border border-slate-800 px-3 py-2 text-sm text-slate-300 transition hover:border-slate-700 hover:text-white">
+                <i class="fa-solid fa-magnifying-glass"></i>
+            </button>
+        </form>
+    </div>
+
+    {% if nodes %}
+    <div class="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
+        <table class="w-full text-left text-sm">
+            <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-5 py-3 font-medium">Node</th>
+                    <th class="px-5 py-3 font-medium">Management IP</th>
+                    <th class="px-5 py-3 font-medium">Cluster</th>
+                    <th class="px-5 py-3 font-medium">VMs</th>
+                    <th class="px-5 py-3 font-medium">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for node in nodes %}
+                <tr class="cursor-pointer transition hover:bg-slate-800/30"
+                    hx-get="{{ url_for('vms.show', node_id=node.id) }}"
+                    hx-target="#app-content" hx-push-url="true">
+                    <td class="px-5 py-3 font-medium text-slate-200">{{ node.name }}</td>
+                    <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ node.ip_address or '—' }}</td>
+                    <td class="px-5 py-3 text-slate-400">{{ cluster_names.get(node.cluster_id, '—') if node.cluster_id else '—' }}</td>
+                    <td class="px-5 py-3 text-slate-300">{{ counts.get(node.id, 0) }}</td>
+                    <td class="px-5 py-3">{{ status_badge(node.status) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% include 'partials/pagination.html' %}
+    </div>
+    {% else %}
+    {{ empty_state('fa-hard-drive', 'No nodes', 'Once nodes exist, their VMs show up here.') }}
+    {% endif %}
+</div>
+{% endblock %}

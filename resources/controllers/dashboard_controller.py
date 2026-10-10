@@ -6,6 +6,7 @@ from core import auth
 from resources.app.models.boot_event import BootEvent
 from resources.app.models.cluster import Cluster
 from resources.app.models.node import Node
+from resources.app.services.fleet_metrics import FleetMetrics
 from resources.controllers.controller import Controller
 
 
@@ -23,7 +24,7 @@ class DashboardController(Controller):
             "unregistered": len(pending),
         }
         recent_events = (
-            BootEvent.query().order_by("id", "desc").limit(8).get()
+            BootEvent.query().order_by("id", "desc").limit(5).get()
         )
         recent_nodes = Node.query().order_by("id", "desc").limit(6).get()
         return self.render_page(
@@ -32,7 +33,12 @@ class DashboardController(Controller):
                 "stats": stats,
                 "recent_events": recent_events,
                 "recent_nodes": recent_nodes,
+                "fleet": FleetMetrics.snapshot(),
                 "active": "dashboard",
             },
             request,
         )
+
+    def metrics(self, request):
+        """HTMX fragment: live-aggregated CPU/RAM (polled every 5s)."""
+        return self.render("partials/fleet_metrics.html", {"fleet": FleetMetrics.snapshot()})

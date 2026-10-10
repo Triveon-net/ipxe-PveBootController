@@ -68,7 +68,7 @@
             <div class="flex items-center justify-between border-b border-slate-800 px-5 py-3">
                 <h2 class="text-sm font-medium text-slate-300">
                     <i class="fa-solid fa-file-code mr-2 text-brand-400"></i>corosync.conf
-                    <span class="ml-2 text-xs font-normal text-slate-500">auto-generated</span>
+                    <span class="ml-2 text-xs font-normal text-slate-500">{{ 'custom' if corosync_custom else 'auto-generated' }}</span>
                 </h2>
                 <div class="flex items-center gap-2">
                     <button type="button"

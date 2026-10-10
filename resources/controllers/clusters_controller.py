@@ -14,7 +14,7 @@ RULES = {
     "name": "required|cluster_name",
     "description": "nullable|string|max:255",
     "quorum_expected": "required|integer|min:1|max:64",
-    "corosync_config": "nullable|json",
+    "corosync_config": "nullable|string|max:8192",
 }
 
 
@@ -49,6 +49,7 @@ class ClustersController(Controller):
                 "storages": Storage.query().order_by("storage_id").get(),
                 "assigned_storage_ids": Storage.ids_for_cluster(cluster.id),
                 "secrets": ClusterKeys.status(cluster),
+                "corosync_custom": bool((cluster.get("corosync_config") or "").strip()),
                 "active": "clusters",
             },
             request,
@@ -86,7 +87,7 @@ class ClustersController(Controller):
                 "name": data["name"],
                 "description": data.get("description") or "",
                 "quorum_expected": data["quorum_expected"],
-                "corosync_config": data.get("corosync_config") or {},
+                "corosync_config": data.get("corosync_config") or "",
             }
         )
         self.flash(f"Cluster '{data['name']}' created.", "success")

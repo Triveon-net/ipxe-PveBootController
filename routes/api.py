@@ -16,6 +16,8 @@ def register(router) -> None:
             "api.boot.config"
         )
         router.get("/nodes", "Api/NodesApiController@index").name("api.nodes.index")
+        router.get("/vms", "Api/VmsApiController@index").name("api.vms.index")
+        router.get("/vms/<int:node_id>", "Api/VmsApiController@show").name("api.vms.show")
 
     # iPXE boot script (served to booting machines, no token required).
     with router.group(is_api=True):

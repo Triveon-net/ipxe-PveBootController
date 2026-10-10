@@ -15,9 +15,10 @@
         <div class="flex items-center gap-2 text-sm font-medium text-brand-300">
             <i class="fa-solid fa-satellite-dish"></i><span>Reported by this machine</span>
         </div>
-        <div class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <div class="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
             <div><span class="block text-xs text-slate-500">MAC</span><span class="font-mono text-slate-200">{{ pending_report.mac_address }}</span></div>
             <div><span class="block text-xs text-slate-500">IP</span><span class="font-mono text-slate-300">{{ pending_report.ip_address or '—' }}</span></div>
+            <div><span class="block text-xs text-slate-500">NIC</span><span class="font-mono text-slate-300">{{ pending_nic or '—' }}</span></div>
             <div><span class="block text-xs text-slate-500">CPU</span><span class="text-slate-300">{{ pending_report.cpu_model or '—' }}{% if pending_report.cpu_count %} · {{ pending_report.cpu_count }} vCPU{% endif %}</span></div>
             <div><span class="block text-xs text-slate-500">RAM</span><span class="text-slate-300">{{ (pending_report.ram_gb ~ ' GB') if pending_report.ram_gb else '—' }}</span></div>
         </div>

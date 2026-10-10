@@ -1,14 +1,17 @@
-"""Read-only JSON view of configured nodes."""
+"""Read-only JSON view of configured nodes (paginated, max 50 per page)."""
 
 from __future__ import annotations
 
+from core.pagination import Pager, page_args
 from resources.app.models.node import Node
 from resources.controllers.controller import Controller
 
 
 class NodesApiController(Controller):
     def index(self, request):
-        nodes = Node.query().order_by("name").get()
+        page, per_page, offset = page_args(request)
+        search = (request.args.get("q") or "").strip()
+        total, nodes = Node.page(search, per_page, offset)
         return self.json(
             {
                 "data": [
@@ -25,6 +28,7 @@ class NodesApiController(Controller):
                         "last_report_at": node.last_report_at,
                     }
                     for node in nodes
-                ]
+                ],
+                "meta": Pager(page, per_page, total).to_dict(),
             }
         )

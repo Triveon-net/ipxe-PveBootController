@@ -85,8 +85,15 @@ class StorageController(Controller):
         return self._done(request, "/storage")
 
     def exports(self, request):
-        """HTMX endpoint: return available NFS exports for the given server."""
+        """HTMX endpoint: render the export control for the given server.
+
+        Returns a proper ``<select>`` when the server exposes NFS exports, or a
+        free-text ``<input>`` when it is unreachable / has none, so a storage can
+        still be created either way.
+        """
         raw = (request.args.get("server") or "").strip()
+        field_id = request.args.get("field_id") or "export"
+        value = (request.args.get("export") or "").strip()
         exports: list[str] = []
         message = ""
         if not raw:
@@ -105,9 +112,45 @@ class StorageController(Controller):
                 if not exports and reachable:
                     message = message or "No exports found."
         return self.render(
-            "partials/storage_export_options.html",
-            {"exports": exports, "message": message},
+            "partials/storage_export_field.html",
+            {"exports": exports, "message": message, "field_id": field_id, "value": value},
         )
+
+    def update(self, request, storage_id: int):
+        storage = self._find(storage_id)
+        try:
+            data = self.validate(request.form, RULES)
+        except ValidationException as exc:
+            self.flash(self._first_error(exc), "error")
+            return self._done(request, "/storage")
+
+        clash = (
+            Storage.where("storage_id", data["storage_id"])
+            .where("id", storage.id, "!=")
+            .exists()
+        )
+        if clash:
+            self.flash("A storage with that ID already exists.", "error")
+            return self._done(request, "/storage")
+
+        reachable, exports, _message = StorageProbe.inspect(data["server"])
+        storage.update(
+            {
+                "storage_id": data["storage_id"],
+                "kind": data.get("kind") or "nfs",
+                "server": data["server"],
+                "export": data["export"],
+                "options": {"exports": exports},
+                "reachable": 1 if reachable else 0,
+                "last_checked_at": now_iso(),
+            }
+        )
+        self._push_all()
+        self.flash(
+            f"Storage '{data['storage_id']}' updated.",
+            "success" if reachable else "warning",
+        )
+        return self._done(request, "/storage")
 
     # -- helpers ------------------------------------------------------------
     @staticmethod

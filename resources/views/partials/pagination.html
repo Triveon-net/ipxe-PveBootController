@@ -1,0 +1,18 @@
+<div class="flex items-center justify-between border-t border-slate-800 px-5 py-3 text-xs text-slate-500">
+    <span>{{ pager.start }}–{{ pager.end }} of {{ pager.total }}</span>
+    <div class="flex items-center gap-3">
+        <a href="{{ base }}?q={{ search|urlencode }}&page={{ pager.prev_page }}"
+           hx-get="{{ base }}?q={{ search|urlencode }}&page={{ pager.prev_page }}"
+           hx-target="#app-content" hx-push-url="true"
+           class="rounded-lg border border-slate-800 px-3 py-1 {{ 'pointer-events-none opacity-40' if not pager.has_prev else 'hover:border-slate-700 hover:text-slate-200' }}">
+            <i class="fa-solid fa-chevron-left"></i>
+        </a>
+        <span>Page {{ pager.page }} / {{ pager.pages }}</span>
+        <a href="{{ base }}?q={{ search|urlencode }}&page={{ pager.next_page }}"
+           hx-get="{{ base }}?q={{ search|urlencode }}&page={{ pager.next_page }}"
+           hx-target="#app-content" hx-push-url="true"
+           class="rounded-lg border border-slate-800 px-3 py-1 {{ 'pointer-events-none opacity-40' if not pager.has_next else 'hover:border-slate-700 hover:text-slate-200' }}">
+            <i class="fa-solid fa-chevron-right"></i>
+        </a>
+    </div>
+</div>

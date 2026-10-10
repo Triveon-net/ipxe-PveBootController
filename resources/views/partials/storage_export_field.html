@@ -1,0 +1,13 @@
+{% set input_class = 'w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-brand-500' %}
+{% if exports %}
+<select id="{{ field_id }}" name="export" class="{{ input_class }} font-mono">
+    <option value="">— select an export —</option>
+    {% for export in exports %}
+    <option value="{{ export }}" {{ 'selected' if export == value else '' }}>{{ export }}</option>
+    {% endfor %}
+</select>
+<p class="mt-1 text-xs text-slate-500">{{ exports|length }} export(s) found on the server.</p>
+{% else %}
+<input id="{{ field_id }}" name="export" value="{{ value }}" placeholder="/mnt/data" autocomplete="off" class="{{ input_class }} font-mono">
+<p class="mt-1 text-xs text-slate-500">{{ message or 'Enter the export path manually.' }}</p>
+{% endif %}

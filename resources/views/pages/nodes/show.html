@@ -34,6 +34,8 @@
                         ('VLAN', node.vlan or '—'),
                         ('DNS', node.dns or '—'),
                         ('Bridge', node.bridge or '—'),
+                        ('Bridge port (NIC)', node.get('bridge_port') or '—'),
+                        ('NIC (reported)', node.get('detected_nic') or '—'),
                     ] %}
                     <div class="flex justify-between border-b border-slate-800/60 pb-2">
                         <dt class="text-slate-500">{{ label }}</dt>
@@ -64,14 +66,15 @@
 
             <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
                 <h2 class="mb-4 text-sm font-medium text-slate-300">Advanced configuration</h2>
-                {% for label, value in [
-                    ('Storage', node.get('storage_config', [])),
-                    ('VMs', node.get('vm_config', [])),
-                    ('Network', node.get('network_config', {})),
+                {% for label, text in [
+                    ('Storage (/etc/pve/storage.cfg)', node.get('storage_config', '')),
+                    ('Network (/etc/network/interfaces)', node.get('network_config', '')),
                 ] %}
                 <p class="mb-1 mt-3 text-xs uppercase tracking-wide text-slate-600">{{ label }}</p>
-                <pre class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-300">{{ value | tojson(indent=2) }}</pre>
+                <pre class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-300">{{ text or '—' }}</pre>
                 {% endfor %}
+                <p class="mb-1 mt-3 text-xs uppercase tracking-wide text-slate-600">VMs (JSON)</p>
+                <pre class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-300">{{ node.get('vm_config', []) | tojson(indent=2) }}</pre>
             </section>
         </div>
 

@@ -78,10 +78,14 @@
                            class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500">
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm text-slate-400" for="ccorosync">Corosync config (JSON)</label>
-                    <textarea id="ccorosync" name="corosync_config" rows="4"
-                              placeholder='{"ring0_addr": "10.0.0.10"}'
-                              class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100 outline-none focus:border-brand-500">{}</textarea>
+                    <label class="mb-1 block text-sm text-slate-400" for="ccorosync">Corosync config (optional)</label>
+                    <textarea id="ccorosync" name="corosync_config" rows="8"
+                              placeholder="logging {&#10;  debug: off&#10;  to_syslog: yes&#10;}&#10;&#10;totem {&#10;  cluster_name: pve-cluster&#10;  ...&#10;}"
+                              class="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100 outline-none focus:border-brand-500"></textarea>
+                    <p class="mt-1 text-xs text-slate-500">
+                        Paste a full <span class="font-mono">corosync.conf</span> (1:1 syntax). Leave empty to
+                        auto-generate the <span class="font-mono">nodelist</span> from the assigned nodes.
+                    </p>
                 </div>
                 <button type="submit"
                         class="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500">
