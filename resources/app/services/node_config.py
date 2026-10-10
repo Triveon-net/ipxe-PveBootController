@@ -24,7 +24,7 @@ class NodeConfig:
             "name": node.name,
             "mac_address": node.mac_address,
             "ip_address": node.ip_address,
-            "status": node.status,
+            "status": node.effective_status(),
         }
 
     @staticmethod

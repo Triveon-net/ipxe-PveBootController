@@ -42,15 +42,6 @@ def _clean_mac(value: object) -> str:
     return str(value or "").strip().lower()
 
 
-def _set_node_status(mac: str, status: str) -> None:
-    """Update a node's status from the agent's apply result (best effort)."""
-    from resources.app.models.node import Node
-
-    node = Node.find_by_mac(mac)
-    if node is not None and (node.get("status") or "") != status:
-        node.update({"status": status})
-
-
 def _store_vms_for(mac: str, items: object, prune: bool = True) -> None:
     """Persist the VM set a node reported (keyed by node + vmid).
 
@@ -307,17 +298,12 @@ class AgentHub:
             self._store_vms(conn.mac, message.get("vms"), bool(message.get("prune", True)))
 
         elif kind == "status":
-            state = str(message.get("state") or "")
             log.info(
                 "agent %s status: %s %s",
                 conn.mac or "?",
-                state,
+                message.get("state") or "",
                 message.get("message") or "",
             )
-            if conn.mac and state in ("applied", "apply_error"):
-                _set_node_status(
-                    conn.mac, "configured" if state == "applied" else "error"
-                )
 
         elif kind == "metrics":
             if not conn.mac:

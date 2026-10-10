@@ -40,7 +40,7 @@
                     <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ node.ip_address or '—' }}</td>
                     <td class="px-5 py-3 text-slate-400">{{ cluster_names.get(node.cluster_id, '—') if node.cluster_id else '—' }}</td>
                     <td class="px-5 py-3 text-slate-300">{{ counts.get(node.id, 0) }}</td>
-                    <td class="px-5 py-3">{{ status_badge(node.status) }}</td>
+                    <td class="px-5 py-3">{{ status_badge(node.effective_status()) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

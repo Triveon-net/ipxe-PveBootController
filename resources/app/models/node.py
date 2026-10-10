@@ -7,12 +7,14 @@ from core.model import Model
 STATUS_PENDING = "pending"
 STATUS_CONFIGURING = "configuring"
 STATUS_CONFIGURED = "configured"
+STATUS_OFFLINE = "offline"
 STATUS_ERROR = "error"
 
 STATUS_LABELS = {
     STATUS_PENDING: "Pending",
     STATUS_CONFIGURING: "Configuring",
     STATUS_CONFIGURED: "Configured",
+    STATUS_OFFLINE: "Offline",
     STATUS_ERROR: "Error",
 }
 
@@ -46,6 +48,29 @@ class Node(Model):
     @property
     def status_label(self) -> str:
         return STATUS_LABELS.get(self._attributes.get("status", ""), "Unknown")
+
+    @property
+    def is_configured(self) -> bool:
+        """A node counts as configured once it has a management IP."""
+        return bool(str(self.get("ip_address") or "").strip())
+
+    def effective_status(self, online: set[str] | None = None) -> str:
+        """Derive the display status from config + reachability.
+
+        * no IP yet            -> pending   (reachable but not set up)
+        * IP and reachable     -> configured
+        * IP but not reachable -> offline
+
+        Reachability is the live agent WebSocket (``online`` may be passed in to
+        avoid a hub lookup per row).
+        """
+        if not self.is_configured:
+            return STATUS_PENDING
+        if online is None:
+            from core.websocket import get_hub
+
+            online = get_hub().connected_macs()
+        return STATUS_CONFIGURED if self.mac_address in online else STATUS_OFFLINE
 
     @property
     def cluster(self):

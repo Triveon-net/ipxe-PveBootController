@@ -12,7 +12,7 @@
                 <i class="fa-solid fa-hard-drive text-brand-400"></i>{{ node.name }}
             </h1>
             <p class="mt-1 flex items-center gap-3 text-sm text-slate-500">
-                <span>{{ status_badge(node.status) }}</span>
+                <span>{{ status_badge(node.effective_status()) }}</span>
                 <span class="font-mono">{{ node.ip_address or '—' }}</span>
                 <span>{{ pager.total }} VM(s)</span>
             </p>

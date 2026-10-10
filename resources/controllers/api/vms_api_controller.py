@@ -16,6 +16,9 @@ class VmsApiController(Controller):
         search = (request.args.get("q") or "").strip()
         total, nodes = Node.page(search, per_page, offset)
         counts = Vm.counts_by_node()
+        from core.websocket import get_hub
+
+        online = get_hub().connected_macs()
         return self.json(
             {
                 "data": [
@@ -25,7 +28,7 @@ class VmsApiController(Controller):
                         "ip_address": node.ip_address,
                         "mac_address": node.mac_address,
                         "cluster_id": node.cluster_id,
-                        "status": node.status,
+                        "status": node.effective_status(online),
                         "vm_count": counts.get(node.id, 0),
                     }
                     for node in nodes
