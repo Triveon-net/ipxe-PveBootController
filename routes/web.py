@@ -30,6 +30,9 @@ def register(router) -> None:
         router.post("/nodes/pending/<string:mac>/unreject", "NodesController@unreject").name(
             "nodes.unreject"
         )
+        router.post("/nodes/pending/<string:mac>/delete", "NodesController@destroy_rejected").name(
+            "nodes.rejected.destroy"
+        )
         router.get("/nodes/create", "NodesController@create").name("nodes.create")
         router.post("/nodes", "NodesController@store").name("nodes.store")
         router.get("/nodes/<int:node_id>", "NodesController@show").name("nodes.show")

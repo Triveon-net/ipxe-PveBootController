@@ -38,6 +38,11 @@ class BootEvent(Model):
             cls.where("mac_address", mac_address).order_by("id", "desc").first()
         )
 
+    @classmethod
+    def purge(cls, mac_address: str) -> int:
+        """Delete every boot report for a MAC. Returns the number removed."""
+        return cls.where("mac_address", mac_address).delete()
+
     def node(self):
         from resources.app.models.node import Node
 

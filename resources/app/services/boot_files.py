@@ -61,32 +61,63 @@ class BootFiles:
                 digest.update(chunk)
                 handle.write(chunk)
 
-        sha256 = digest.hexdigest()
-        content_type = file_storage.mimetype or "application/octet-stream"
-        now = now_iso()
+        return cls._record(
+            name,
+            size=size,
+            sha256=digest.hexdigest(),
+            content_type=file_storage.mimetype or "application/octet-stream",
+            original_name=file_storage.filename or name,
+        )
 
+    @classmethod
+    def store_text(
+        cls,
+        name: str,
+        content: str,
+        *,
+        content_type: str = "text/plain; charset=utf-8",
+        original_name: str | None = None,
+    ) -> BootFile:
+        """Write generated text (e.g. the iPXE script) as a boot file.
+
+        Used to materialise the rendered `boot.ipxe` on disk so a static file
+        server / DHCP option 67 always serves the current script.
+        """
+        name = cls.sanitize_name(name)
+        directory = get_config().bootfiles_path
+        directory.mkdir(parents=True, exist_ok=True)
+        data = content.encode("utf-8")
+        (directory / name).write_bytes(data)
+        return cls._record(
+            name,
+            size=len(data),
+            sha256=hashlib.sha256(data).hexdigest(),
+            content_type=content_type,
+            original_name=original_name or name,
+        )
+
+    @classmethod
+    def _record(
+        cls,
+        name: str,
+        *,
+        size: int,
+        sha256: str,
+        content_type: str,
+        original_name: str,
+    ) -> BootFile:
+        payload = {
+            "original_name": original_name,
+            "size": size,
+            "sha256": sha256,
+            "content_type": content_type,
+            "created_at": now_iso(),
+        }
         existing = BootFile.find_by_name(name)
         if existing is not None:
-            existing.update(
-                {
-                    "original_name": file_storage.filename or name,
-                    "size": size,
-                    "sha256": sha256,
-                    "content_type": content_type,
-                    "created_at": now,
-                }
-            )
+            existing.update(payload)
             return existing
-        return BootFile.create(
-            {
-                "name": name,
-                "original_name": file_storage.filename or name,
-                "size": size,
-                "sha256": sha256,
-                "content_type": content_type,
-                "created_at": now,
-            }
-        )
+        return BootFile.create({"name": name, **payload})
 
     @classmethod
     def delete(cls, boot_file: BootFile) -> None:

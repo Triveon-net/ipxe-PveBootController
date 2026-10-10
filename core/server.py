@@ -10,6 +10,8 @@ import threading
 
 from werkzeug.serving import BaseWSGIServer, make_server
 
+from core.websocket import WebSocketRequestHandler
+
 _active: "ServerHandle | None" = None
 
 
@@ -17,7 +19,9 @@ class ServerHandle:
     def __init__(self, host: str, port: int, app) -> None:
         self.host = host
         self.port = port
-        self._server: BaseWSGIServer = make_server(host, port, app, threaded=True)
+        self._server: BaseWSGIServer = make_server(
+            host, port, app, threaded=True, request_handler=WebSocketRequestHandler
+        )
         self._thread: threading.Thread | None = None
 
     def start(self) -> "ServerHandle":

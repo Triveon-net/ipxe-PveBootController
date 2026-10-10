@@ -23,6 +23,7 @@ from core.middleware import (
     AddSecurityHeaders,
     ApiToken,
     Authenticate,
+    CloseDatabase,
     Middleware,
     RedirectIfAuthenticated,
     StartSession,
@@ -53,6 +54,7 @@ class Application:
         self.sessions = SessionStore(self.db, self.config)
 
         self.middleware: list[Middleware] = [
+            CloseDatabase(self.db),
             AddSecurityHeaders(self.config),
             StartSession(self),
         ]

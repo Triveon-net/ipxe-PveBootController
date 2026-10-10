@@ -35,8 +35,7 @@ class AgentScriptController(Controller):
             content = path.read_text(encoding="utf-8")
         else:
             content = "#!/bin/sh\necho 'install.sh is missing' >&2\nexit 1\n"
-        # Force the config to the controller this script was downloaded from.
-        content = content.replace("__CONTROLLER__", f"{request.scheme}://{request.host}")
+        content = self._substitute(request, content)
         response = text_response(content)
         response.headers["Content-Type"] = "text/x-shellscript; charset=utf-8"
         return response
@@ -49,8 +48,16 @@ class AgentScriptController(Controller):
             content = path.read_text(encoding="utf-8")
         else:
             content = f"# {filename} is missing on the controller\n"
+        content = self._substitute(request, content)
         response = text_response(content)
         response.headers["Content-Type"] = AGENTS[filename]
         if request.args.get("download"):
             response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+    def _substitute(self, request, content: str) -> str:
+        """Fill in controller-derived placeholders (URLs the agent should use)."""
+        base = f"{request.scheme}://{request.host}"
+        ws_scheme = "wss" if request.scheme == "https" else "ws"
+        ws_url = f"{ws_scheme}://{request.host}{self.config.ws_path}"
+        return content.replace("__CONTROLLER__", base).replace("__WS_URL__", ws_url)

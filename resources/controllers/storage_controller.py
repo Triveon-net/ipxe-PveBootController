@@ -7,7 +7,7 @@ from core.security import ValidationError, Validator
 from core.support import now_iso
 from resources.app.models.storage import Storage
 from resources.app.services.storage import StorageProbe
-from resources.controllers.controller import Controller, is_htmx
+from resources.controllers.controller import Controller
 
 RULES = {
     "storage_id": "required|storage_id",
@@ -55,6 +55,7 @@ class StorageController(Controller):
             f"{': ' + message if message else ''}).",
             "success" if reachable else "warning",
         )
+        self._push_all()
         return self._done(request, "/storage")
 
     def check(self, request, storage_id: int):
@@ -72,12 +73,14 @@ class StorageController(Controller):
             f"{' — ' + message if message else ''}.",
             "success" if reachable else "warning",
         )
+        self._push_all()
         return self._done(request, "/storage")
 
     def destroy(self, request, storage_id: int):
         storage = self._find(storage_id)
         name = storage.storage_id
         storage.delete()
+        self._push_all()
         self.flash(f"Storage '{name}' deleted.", "success")
         return self._done(request, "/storage")
 
@@ -108,6 +111,13 @@ class StorageController(Controller):
 
     # -- helpers ------------------------------------------------------------
     @staticmethod
+    def _push_all() -> None:
+        """Push fresh configs to every connected agent (storage change)."""
+        from core.websocket import get_hub
+
+        get_hub().notify_all()
+
+    @staticmethod
     def _find(storage_id: int) -> Storage:
         storage = Storage.find(storage_id)
         if storage is None:
@@ -120,8 +130,3 @@ class StorageController(Controller):
             if messages:
                 return messages[0]
         return "Please check the input."
-
-    def _done(self, request, url: str):
-        if is_htmx(request):
-            return self.htmx_redirect(url)
-        return self.redirect(url)

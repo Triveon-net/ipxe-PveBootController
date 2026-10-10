@@ -1,28 +1,40 @@
 """iPXE-PveController provisioning agent (runs inside the node image).
 
 Reports the node's hardware to the controller and applies the returned
-configuration: hostname, management network, Corosync/cluster and NFS storages.
-Standard library only - no dependencies.
+configuration: hostname, management network, Corosync/cluster and NFS storages,
+then regenerates the PVE certificates and restarts the PVE daemons. Standard
+library only - no dependencies.
 
 Settings come from a `pve-agent.conf` file (see `load_conf_file`), the
 environment or the kernel command line. Command-line arguments win.
+
+By default the agent runs permanently: it keeps reporting until the node is
+accepted in the panel and then keeps the configuration applied. Pass `--once`
+to report a single time and exit.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import ipaddress
 import json
 import os
 import re
 import shutil
+import socket
+import ssl
+import struct
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
+
+VERSION = "2.0"
 
 _VIRTUAL_RE = re.compile(
     r"^(lo|docker\d*|veth.*|br-[0-9a-f]+|virbr\d*|vnet\d+|tap\d+|tun\d+|wg\d+|cni\d+|flannel.*|cali.*)$"
@@ -40,6 +52,18 @@ def host_from_url(url: str) -> str:
     host = re.sub(r"^[A-Za-z][A-Za-z0-9+.-]*://", "", url or "")
     host = host.split("/", 1)[0]
     return host.rsplit(":", 1)[0] if ":" in host else host
+
+
+def derive_ws_url(controller: str, path: str = "/agent") -> str:
+    """WebSocket URL for the controller (same host/port as HTTP)."""
+    if not controller:
+        return ""
+    parts = urllib.parse.urlsplit(controller if "://" in controller else f"http://{controller}")
+    netloc = parts.netloc
+    if not netloc:
+        return ""
+    scheme = "wss" if parts.scheme == "https" else "ws"
+    return f"{scheme}://{netloc}{path}"
 
 
 def run(args: list[str]) -> subprocess.CompletedProcess:
@@ -183,6 +207,157 @@ def report_hardware(controller: str, token: str | None, payload: dict, timeout: 
 
 
 # --------------------------------------------------------------------------
+# WebSocket client (RFC 6455, standard library only)
+# --------------------------------------------------------------------------
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+
+class WebSocketClosed(Exception):
+    pass
+
+
+class WebSocket:
+    """Minimal text-only WebSocket client (masked client frames, no extensions)."""
+
+    def __init__(self, url: str, token: str | None = None, timeout: int = 20) -> None:
+        self.url = url
+        self.token = token
+        self.timeout = timeout
+        self.sock: socket.socket | None = None
+        self._buffer = b""
+
+    # -- lifecycle ----------------------------------------------------------
+    def connect(self) -> None:
+        parts = urllib.parse.urlsplit(self.url)
+        host = parts.hostname or ""
+        secure = parts.scheme == "wss"
+        port = parts.port or (443 if secure else 80)
+        path = parts.path or "/"
+        if parts.query:
+            path += "?" + parts.query
+
+        raw = socket.create_connection((host, port), timeout=self.timeout)
+        if secure:
+            raw = ssl.create_default_context().wrap_socket(raw, server_hostname=host)
+        self.sock = raw
+        self._buffer = b""
+
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        lines = [
+            f"GET {path} HTTP/1.1",
+            f"Host: {host}:{port}",
+            "Upgrade: websocket",
+            "Connection: Upgrade",
+            f"Sec-WebSocket-Key: {key}",
+            "Sec-WebSocket-Version: 13",
+        ]
+        if self.token:
+            lines.append(f"X-API-Token: {self.token}")
+        raw.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("ascii"))
+
+        header = self._read_until(b"\r\n\r\n")
+        status = header.split(b"\r\n", 1)[0]
+        if b" 101 " not in status:
+            raise RuntimeError(f"handshake failed: {status.decode('latin-1', 'replace')}")
+        expected = base64.b64encode(
+            hashlib.sha1((key + _WS_GUID).encode("ascii")).digest()
+        ).decode("ascii")
+        if expected.lower().encode() not in header.lower():
+            raise RuntimeError("handshake failed: bad Sec-WebSocket-Accept")
+
+    def close(self) -> None:
+        if self.sock is None:
+            return
+        try:
+            self._send_frame(0x8, b"")
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+        self.sock = None
+
+    # -- sending ------------------------------------------------------------
+    def send_text(self, text: str) -> None:
+        self._send_frame(0x1, text.encode("utf-8"))
+
+    def _send_frame(self, opcode: int, payload: bytes) -> None:
+        if self.sock is None:
+            raise WebSocketClosed("not connected")
+        header = bytearray([0x80 | opcode])
+        mask = os.urandom(4)
+        length = len(payload)
+        if length < 126:
+            header.append(0x80 | length)
+        elif length < 65536:
+            header.append(0x80 | 126)
+            header += struct.pack("!H", length)
+        else:
+            header.append(0x80 | 127)
+            header += struct.pack("!Q", length)
+        header += mask
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        self.sock.sendall(bytes(header) + masked)
+
+    # -- receiving ----------------------------------------------------------
+    def recv_text(self, timeout: float | None = None) -> str | None:
+        """Return the next text message, or None when the peer closed.
+
+        Raises `socket.timeout` when idle (no data within `timeout`).
+        """
+        while True:
+            frame = self._read_frame(timeout)
+            opcode, payload = frame
+            if opcode == 0x1:  # text
+                return payload.decode("utf-8", "replace")
+            if opcode == 0x8:  # close
+                return None
+            if opcode == 0x9:  # ping -> pong
+                self._send_frame(0xA, payload)
+            # 0xA pong and 0x0 continuation are ignored
+
+    def _read_frame(self, timeout: float | None) -> tuple[int, bytes]:
+        if self.sock is None:
+            raise WebSocketClosed("not connected")
+        self.sock.settimeout(timeout)
+        first = self._recv_exact(2)  # socket.timeout here means "idle", safe
+        byte1, byte2 = first[0], first[1]
+        opcode = byte1 & 0x0F
+        masked = bool(byte2 & 0x80)
+        length = byte2 & 0x7F
+        self.sock.settimeout(self.timeout)  # rest of the frame is blocking
+        if length == 126:
+            length = struct.unpack("!H", self._recv_exact(2))[0]
+        elif length == 127:
+            length = struct.unpack("!Q", self._recv_exact(8))[0]
+        mask = self._recv_exact(4) if masked else b""
+        payload = self._recv_exact(length) if length else b""
+        if masked:
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        return opcode, payload
+
+    def _recv_exact(self, count: int) -> bytes:
+        while len(self._buffer) < count:
+            chunk = self.sock.recv(4096)  # type: ignore[union-attr]
+            if not chunk:
+                raise WebSocketClosed("connection closed")
+            self._buffer += chunk
+        data, self._buffer = self._buffer[:count], self._buffer[count:]
+        return data
+
+    def _read_until(self, marker: bytes) -> bytes:
+        while marker not in self._buffer:
+            chunk = self.sock.recv(4096)  # type: ignore[union-attr]
+            if not chunk:
+                raise WebSocketClosed("connection closed during handshake")
+            self._buffer += chunk
+        end = self._buffer.index(marker) + len(marker)
+        data, self._buffer = self._buffer[:end], self._buffer[end:]
+        return data
+
+
+# --------------------------------------------------------------------------
 # File generation (pure functions - unit tested)
 # --------------------------------------------------------------------------
 def render_interfaces(nic: str, cfg: dict) -> str:
@@ -279,7 +454,10 @@ class Applier:
         except OSError:
             return ""
 
-    def write(self, absolute: str, content: str) -> None:
+    def write(self, absolute: str, content: str, mode: int | None = None) -> None:
+        self.write_bytes(absolute, content.encode("utf-8"), mode=mode)
+
+    def write_bytes(self, absolute: str, data: bytes, mode: int | None = None) -> None:
         target = self.path(absolute)
         if self.dry_run:
             log(f"[dry-run] would write {target}")
@@ -287,12 +465,19 @@ class Applier:
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.is_file():
             try:
-                if target.read_text() == content:
+                if target.read_bytes() == data:
+                    if mode is not None:
+                        os.chmod(target, mode)
                     return
             except OSError:
                 pass
             shutil.copy2(target, f"{target}.pve-agent.bak")
-        target.write_text(content)
+        target.write_bytes(data)
+        if mode is not None:
+            try:
+                os.chmod(target, mode)
+            except OSError:
+                pass
         log(f"wrote {target}")
 
     def step(self, name: str, func) -> None:
@@ -309,10 +494,13 @@ class Applier:
         self.step("mail", lambda: self.apply_mail())
         self.step("corosync-name", lambda: self.apply_corosync_name())
         self.step("network", lambda: self.apply_network(cfg, nic))
+        self.step("cluster-hosts", lambda: self.apply_cluster_hosts(cfg))
         self.step("corosync", lambda: self.apply_corosync(cfg))
+        self.step("ssh", lambda: self.apply_ssh(cfg))
         self.step("storage", lambda: self.apply_storage(cfg))
         self.step("rrdcached", lambda: self.apply_rrdcached())
         self.step("reload", lambda: self.reload_network())
+        self.step("pve-services", lambda: self.apply_pve_services())
 
     def current_hostname(self) -> str:
         return self.read("/etc/hostname").strip() or os.uname().nodename
@@ -385,10 +573,73 @@ class Applier:
             self.write("/etc/resolv.conf", resolv)
 
     def apply_corosync(self, cfg: dict) -> None:
-        conf = cfg.get("corosync_conf") if cfg.get("cluster") else None
-        if not conf:
+        if not cfg.get("cluster"):
             return
-        self.write("/etc/pve/corosync.conf", conf if conf.endswith("\n") else conf + "\n")
+        conf = cfg.get("corosync_conf")
+        if conf:
+            self.write("/etc/pve/corosync.conf", conf if conf.endswith("\n") else conf + "\n")
+        # The authkey must be byte-identical on every node or Corosync refuses to
+        # start ("Could not open /etc/corosync/authkey").
+        authkey = cfg.get("corosync_authkey") or ""
+        if authkey:
+            try:
+                raw = base64.b64decode(authkey, validate=True)
+            except (ValueError, TypeError):
+                raw = b""
+            if raw:
+                self.write_bytes("/etc/corosync/authkey", raw, mode=0o600)
+
+    def apply_ssh(self, cfg: dict) -> None:
+        """Install the node's SSH key and the cluster-wide trust files."""
+        ssh = cfg.get("ssh") or {}
+        private = (ssh.get("private") or "").strip("\n")
+        public = (ssh.get("public") or "").strip()
+        if not private:
+            return
+
+        self.write("/root/.ssh/id_rsa", private + "\n", mode=0o600)
+        if public:
+            self.write("/root/.ssh/id_rsa.pub", public + "\n", mode=0o644)
+
+        authorized = (ssh.get("authorized_keys") or "").strip()
+        if authorized:
+            content = authorized if authorized.endswith("\n") else authorized + "\n"
+            self.write("/root/.ssh/authorized_keys", content, mode=0o644)
+            self.write("/etc/pve/priv/authorized_keys", content, mode=0o600)
+
+        known = (ssh.get("known_hosts") or "").strip()
+        if known:
+            content = known if known.endswith("\n") else known + "\n"
+            self.write("/etc/pve/priv/known_hosts", content, mode=0o600)
+
+        if self.real_root and not self.dry_run:
+            try:
+                os.makedirs(self.path("/root/.ssh"), mode=0o700, exist_ok=True)
+                os.chmod(self.path("/root/.ssh"), 0o700)
+            except OSError:
+                pass
+
+    def apply_cluster_hosts(self, cfg: dict) -> None:
+        """Replicate every cluster node's name/IP into /etc/hosts."""
+        entries = cfg.get("cluster_hosts") or []
+        if not entries:
+            return
+        existing_names: set[str] = set()
+        lines = self.read("/etc/hosts").splitlines()
+        for line in lines:
+            for token in line.split("#", 1)[0].split()[1:]:
+                existing_names.add(token)
+        added = False
+        for entry in entries:
+            ip = str(entry.get("ip") or "").strip()
+            name = str(entry.get("name") or "").strip()
+            if not ip or not name or name in existing_names:
+                continue
+            lines.append(f"{ip} {name}")
+            existing_names.add(name)
+            added = True
+        if added:
+            self.write("/etc/hosts", "\n".join(lines).rstrip("\n") + "\n")
 
     def apply_storage(self, cfg: dict) -> None:
         storages = cfg.get("storages") or []
@@ -420,6 +671,30 @@ class Applier:
             result = run(cmd)
             if result.returncode != 0:
                 log(f"note: {' '.join(cmd)} -> {result.stderr.strip()}")
+
+    def apply_pve_services(self) -> None:
+        """Regenerate PVE certs and restart the cluster/daemon services.
+
+        Runs last, on a booted Proxmox system only. Needs `pvecm updatecerts
+        --force` + a restart of pve-cluster/pvedaemon/pveproxy/pvestatd so a
+        changed hostname/cluster config is picked up.
+        """
+        if self.dry_run or not (self.real_root and os.path.exists("/etc/pve")):
+            return
+        for cmd in (
+            ["pvecm", "updatecerts", "--force"],
+            ["systemctl", "restart", "pve-cluster", "pvedaemon", "pveproxy", "pvestatd"],
+        ):
+            try:
+                result = run(cmd)
+            except OSError as exc:
+                log(f"note: {' '.join(cmd)} -> {exc}")
+                continue
+            if result.returncode != 0:
+                output = (result.stderr or result.stdout).strip()
+                log(f"note: {' '.join(cmd)} -> {output}")
+            else:
+                log(f"ran: {' '.join(cmd)}")
 
 
 # --------------------------------------------------------------------------
@@ -498,15 +773,25 @@ def load_conf_file(explicit: str | None = None) -> Path | None:
 
 def resolve_settings(args) -> dict:
     cmdline = read_cmdline()
+    controller = (args.ctrl or env("PVE_CTRL") or cmdline.get("ctrl") or "").rstrip("/")
     return {
-        "controller": (args.ctrl or env("PVE_CTRL") or cmdline.get("ctrl") or "").rstrip("/"),
+        "controller": controller,
         "token": args.token or env("PVE_API_TOKEN") or cmdline.get("api_token"),
         "iface": args.iface or env("PVE_IFACE") or cmdline.get("iface"),
         "mac": args.mac or env("PVE_MAC") or cmdline.get("mac"),
         "root": args.root or env("PVE_ROOT") or "/",
         "report_only": args.report_only or truthy(env("PVE_REPORT_ONLY")),
         "dry_run": args.dry_run or truthy(env("PVE_DRY_RUN")),
-        "watch": args.watch or truthy(env("PVE_WATCH")),
+        # The agent uses a persistent WebSocket by default; HTTP polling is a
+        # fallback (--http / PVE_HTTP=true, or when no ws URL can be derived).
+        "ws_url": (
+            args.ws or env("PVE_WS_URL") or cmdline.get("ws") or derive_ws_url(controller)
+        ).rstrip("/"),
+        "http_only": bool(getattr(args, "http", False) or truthy(env("PVE_HTTP"))),
+        # Permanent by default: the agent keeps polling so a node that boots
+        # before it is accepted in the panel still gets configured. Opt out with
+        # --once or PVE_ONCE=true.
+        "watch": not (args.once or truthy(env("PVE_ONCE"))),
         "interval": args.interval or _int(env("PVE_INTERVAL"), 5),
         "timeout": _int(args.timeout if args.timeout is not None else env("PVE_TIMEOUT"), 20),
     }
@@ -556,17 +841,108 @@ def once(s: dict, iface: str, hardware: dict) -> int:
     return 0 if status in ("pending", "rejected", "unchanged", "report_only", "applied") else 1
 
 
+def apply_config(s: dict, iface: str, config: dict, last_signature: str | None) -> tuple[str, str | None]:
+    """Apply a pushed config if it changed. Returns (status, signature)."""
+    signature = hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest()
+    if signature == last_signature:
+        return "unchanged", signature
+    if s["report_only"]:
+        log("report-only: configuration not applied")
+        return "report_only", signature
+    applier = Applier(root=s["root"], dry_run=s["dry_run"])
+    applier.apply(config, iface)
+    if applier.errors:
+        log("finished with errors:")
+        for error in applier.errors:
+            log(f"  - {error}")
+        return "apply_error", signature
+    log("configuration applied")
+    return "applied", signature
+
+
+def run_websocket(s: dict, iface: str, hardware: dict) -> int:
+    """Keep one WebSocket open and apply configuration the controller pushes.
+
+    Reconnects with exponential backoff. Hardware is sent once on (re)connect;
+    everything else is initiated by the controller, so the node no longer spams
+    the API. Never exits except on Ctrl-C.
+    """
+    url = s["ws_url"]
+    log(f"connecting to {url}")
+    hello = {"type": "hello", "version": VERSION, **hardware}
+    signature: str | None = None
+    backoff = 1
+    while True:
+        ws = WebSocket(url, s["token"], s["timeout"])
+        try:
+            ws.connect()
+            log("websocket connected; waiting for configuration")
+            backoff = 1
+            ws.send_text(json.dumps(hello))
+            while True:
+                try:
+                    raw = ws.recv_text(timeout=45)
+                except socket.timeout:
+                    continue
+                if raw is None:
+                    log("controller closed the connection")
+                    break
+                try:
+                    message = json.loads(raw)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(message, dict):
+                    continue
+                kind = message.get("type")
+                if kind == "config":
+                    status, sig = apply_config(s, iface, message.get("config") or {}, signature)
+                    if sig is not None:
+                        signature = sig
+                    if status in ("applied", "apply_error"):
+                        ws.send_text(json.dumps({"type": "status", "state": status}))
+                elif kind == "pending":
+                    log(message.get("message") or "waiting for the node to be accepted in the panel")
+                elif kind == "rejected":
+                    log("node was rejected by the controller")
+                elif kind == "error":
+                    log(f"controller error: {message.get('message')}")
+        except KeyboardInterrupt:
+            log("interrupted; stopping")
+            return 0
+        except (OSError, WebSocketClosed, RuntimeError) as exc:
+            log(f"websocket error: {exc}")
+        finally:
+            ws.close()
+        log(f"reconnecting in {backoff}s")
+        try:
+            time.sleep(backoff)
+        except KeyboardInterrupt:
+            return 0
+        backoff = min(backoff * 2, 30)
+
+
 def watch(s: dict, iface: str, hardware: dict) -> int:
-    """Poll until the node is accepted, then keep it applied (runs forever)."""
+    """Poll forever until the node is accepted, then keep it applied.
+
+    Never dies on a transient failure: every iteration is wrapped so a network
+    error, a bad response or a failed apply merely logs and retries after
+    ``interval`` seconds. Returns only when the operator rejects the node.
+    """
     interval = max(1, _int(s["interval"], 5))
     log(f"watching: polling every {interval}s until the node is accepted")
     signature: str | None = None
     while True:
-        status, sig = attempt(s, iface, hardware, signature)
-        if status == "rejected":
+        try:
+            status, sig = attempt(s, iface, hardware, signature)
+            if status == "rejected":
+                return 0
+            if sig is not None:
+                signature = sig
+        except KeyboardInterrupt:
+            log("interrupted; stopping")
             return 0
-        if sig is not None:
-            signature = sig
+        except Exception as exc:  # keep the service alive no matter what
+            log(f"unexpected error (will retry): {exc}")
         time.sleep(interval)
 
 
@@ -581,7 +957,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="do not change anything")
     parser.add_argument("--timeout", type=int, default=None)
     parser.add_argument("--watch", action="store_true",
-                        help="poll until the node is accepted, then keep it applied")
+                        help="poll forever (default; kept for compatibility)")
+    parser.add_argument("--once", action="store_true",
+                        help="report a single time and exit")
+    parser.add_argument("--ws", default=None,
+                        help="agent WebSocket URL (default: derived from --ctrl, same host/port)")
+    parser.add_argument("--http", action="store_true",
+                        help="use HTTP polling instead of the WebSocket")
     parser.add_argument("--interval", type=int, default=None, help="poll interval in seconds (default 5)")
     parser.add_argument("--conf", default=None, help="path to a pve-agent.conf file")
     args = parser.parse_args(argv)
@@ -615,9 +997,11 @@ def main(argv: list[str] | None = None) -> int:
         f"({hardware['cpu_count']} vCPU, {hardware['ram_gb']} GB RAM) -> {controller}"
     )
 
-    if s["watch"]:
+    if args.once:
+        return once(s, iface, hardware)
+    if s["http_only"] or not s["ws_url"]:
         return watch(s, iface, hardware)
-    return once(s, iface, hardware)
+    return run_websocket(s, iface, hardware)
 
 
 if __name__ == "__main__":

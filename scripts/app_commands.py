@@ -13,6 +13,7 @@ from core.cli.kernel import command
 @command("serve", "Start the web server in the foreground (no console)")
 def serve(app, args) -> int:
     from core import server as server_mod
+    from core.websocket import WebSocketRequestHandler
     from werkzeug.serving import run_simple
 
     if server_mod.active_server() is not None:
@@ -37,9 +38,13 @@ def serve(app, args) -> int:
     io.info(f"Environment : {app.config.env}")
     io.info(f"Database    : {app.config.database_path}")
     io.info(f"Listening   : http://{host}:{port}")
+    io.info(f"Agent WS    : ws://{host}:{port}{app.config.ws_path}")
     io.line()
     try:
-        run_simple(host, port, app, use_reloader=False, threaded=True)
+        run_simple(
+            host, port, app, use_reloader=False, threaded=True,
+            request_handler=WebSocketRequestHandler,
+        )
     except KeyboardInterrupt:
         io.line()
         io.warn("Server stopped.")

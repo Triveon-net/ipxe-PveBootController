@@ -8,7 +8,7 @@ from core.support import slugify
 from resources.app.models.cluster import Cluster
 from resources.app.models.storage import Storage
 from resources.app.services.corosync import CorosyncConfigGenerator
-from resources.controllers.controller import Controller, is_htmx
+from resources.controllers.controller import Controller
 
 RULES = {
     "name": "required|cluster_name",
@@ -33,6 +33,12 @@ class ClustersController(Controller):
         generator = CorosyncConfigGenerator()
         node_ids = generator.assign_node_ids(nodes)
         config = generator.sync(cluster)
+        # Make sure the cluster secret material exists so it is ready to hand to
+        # the nodes (authkey + per-node SSH keys).
+        from resources.app.services.cluster_keys import ClusterKeys
+
+        ClusterKeys.ensure_authkey(cluster)
+        ClusterKeys.bundle(cluster)
         return self.render_page(
             "pages/clusters/show.html",
             {
@@ -42,6 +48,7 @@ class ClustersController(Controller):
                 "corosync_conf": config,
                 "storages": Storage.query().order_by("storage_id").get(),
                 "assigned_storage_ids": Storage.ids_for_cluster(cluster.id),
+                "secrets": ClusterKeys.status(cluster),
                 "active": "clusters",
             },
             request,
@@ -50,6 +57,7 @@ class ClustersController(Controller):
     def save_storages(self, request, cluster_id: int):
         cluster = self._find(cluster_id)
         Storage.sync_for_cluster(cluster.id, request.form.getlist("storage_ids"))
+        self._push_all()
         self.flash("Cluster storage updated.", "success")
         return self._done(request, f"/clusters/{cluster.id}")
 
@@ -88,18 +96,21 @@ class ClustersController(Controller):
         cluster = self._find(cluster_id)
         name = cluster.name
         cluster.delete()
+        self._push_all()
         self.flash(f"Cluster '{name}' deleted.", "success")
         return self._done(request, "/clusters")
 
     # -- helpers ------------------------------------------------------------
+    @staticmethod
+    def _push_all() -> None:
+        """Push fresh configs to every connected agent (cluster/storage change)."""
+        from core.websocket import get_hub
+
+        get_hub().notify_all()
+
     @staticmethod
     def _find(cluster_id: int) -> Cluster:
         cluster = Cluster.find(cluster_id)
         if cluster is None:
             raise NotFound("Cluster not found.")
         return cluster
-
-    def _done(self, request, url: str):
-        if is_htmx(request):
-            return self.htmx_redirect(url)
-        return self.redirect(url)

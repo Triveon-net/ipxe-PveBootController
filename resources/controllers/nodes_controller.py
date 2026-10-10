@@ -11,7 +11,7 @@ from resources.app.models.cluster import Cluster
 from resources.app.models.node import Node
 from resources.app.models.rejected_node import RejectedNode
 from resources.app.models.storage import Storage
-from resources.controllers.controller import Controller, is_htmx
+from resources.controllers.controller import Controller
 
 RULES = {
     "name": "required|hostname",
@@ -39,6 +39,7 @@ class NodesController(Controller):
             {
                 "nodes": nodes,
                 "pending_count": len(BootEvent.pending()),
+                "online_macs": self._online_macs(),
                 "active": "nodes",
             },
             request,
@@ -50,6 +51,7 @@ class NodesController(Controller):
             {
                 "pending": BootEvent.pending(),
                 "rejected": RejectedNode.query().order_by("id", "desc").get(),
+                "online_macs": self._online_macs(),
                 "active": "nodes",
             },
             request,
@@ -65,6 +67,16 @@ class NodesController(Controller):
         mac = self._valid_mac(mac)
         RejectedNode.restore(mac)
         self.flash(f"Node {mac} is pending again.", "success")
+        return self._done(request, "/nodes/pending")
+
+    def destroy_rejected(self, request, mac: str):
+        mac = self._valid_mac(mac)
+        RejectedNode.restore(mac)
+        removed = BootEvent.purge(mac)
+        self.flash(
+            f"Removed {mac} from the system ({removed} boot report(s) deleted).",
+            "success",
+        )
         return self._done(request, "/nodes/pending")
 
     def show(self, request, node_id: int):
@@ -145,6 +157,7 @@ class NodesController(Controller):
         node = Node.create(self._normalise(data))
         Storage.sync_for_node(node.id, request.form.getlist("storage_ids"))
         RejectedNode.restore(node.mac_address)
+        self._push_config(node.mac_address)
         self.flash(f"Node '{node.name}' created.", "success")
         return self._done(request, "/nodes")
 
@@ -161,17 +174,34 @@ class NodesController(Controller):
 
         node.update(self._normalise(data))
         Storage.sync_for_node(node.id, request.form.getlist("storage_ids"))
+        self._push_config(node.mac_address)
         self.flash(f"Node '{node.name}' updated.", "success")
         return self._done(request, "/nodes")
 
     def destroy(self, request, node_id: int):
         node = self._find(node_id)
         name = node.name
+        mac = node.mac_address
         node.delete()
+        self._push_config(mac)
         self.flash(f"Node '{name}' deleted.", "success")
         return self._done(request, "/nodes")
 
     # -- helpers ------------------------------------------------------------
+    @staticmethod
+    def _online_macs() -> set[str]:
+        """MACs with a live agent WebSocket (empty when the hub is disabled)."""
+        from core.websocket import get_hub
+
+        return get_hub().connected_macs()
+
+    @staticmethod
+    def _push_config(mac: str) -> None:
+        """Push a fresh config to a connected agent (no-op if it is offline)."""
+        from core.websocket import get_hub
+
+        get_hub().notify_macs([mac])
+
     @staticmethod
     def _find(node_id: int) -> Node:
         node = Node.find(node_id)
@@ -289,8 +319,3 @@ class NodesController(Controller):
             },
         )
         return make_response(body, status=422)
-
-    def _done(self, request, url: str):
-        if is_htmx(request):
-            return self.htmx_redirect(url)
-        return self.redirect(url)

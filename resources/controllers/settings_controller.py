@@ -5,7 +5,7 @@ from __future__ import annotations
 from core.exceptions import ValidationException
 from core.validation import validate
 from resources.app.models.setting import Setting
-from resources.controllers.controller import Controller, is_htmx
+from resources.controllers.controller import Controller
 
 # Only these keys may be written through the panel, each with its own rules.
 # PXE/boot options are managed on the dedicated Boot tab (settings key
@@ -38,8 +38,3 @@ class SettingsController(Controller):
 
         self.flash("Settings saved.", "success")
         return self._done(request, "/settings")
-
-    def _done(self, request, url: str):
-        if is_htmx(request):
-            return self.htmx_redirect(url)
-        return self.redirect(url)

@@ -8,10 +8,9 @@ hardware data and return the configuration the node should apply.
 from __future__ import annotations
 
 from core.exceptions import ValidationException
-from core.support import now_iso
-from resources.app.models.boot_event import BootEvent
 from resources.app.models.node import Node
-from resources.app.models.rejected_node import RejectedNode
+from resources.app.services.boot_report import BootReport
+from resources.app.services.node_config import NodeConfig
 from resources.controllers.controller import Controller
 
 REPORT_RULES = {
@@ -35,56 +34,33 @@ class BootApiController(Controller):
             return self.json({"error": exc.message, "errors": exc.errors}, status=422)
 
         mac = data["mac_address"]
+        result = BootReport.record(mac, BootReport.hardware_from(data))
 
-        if RejectedNode.exists(mac):
+        if result["status"] == "rejected":
             return self.json(
                 {
                     "registered": False,
                     "rejected": True,
-                    "message": "This node was rejected by the operator.",
+                    "message": result.get("message"),
                     "mac_address": mac,
                 },
                 status=202,
             )
-
-        node = Node.find_by_mac(mac)
-
-        BootEvent.create(
-            {
-                "node_id": node.id if node else None,
-                "mac_address": mac,
-                "ip_address": data.get("ip_address") or "",
-                "cpu_model": data.get("cpu_model") or "",
-                "cpu_count": data.get("cpu_count") or 0,
-                "ram_gb": data.get("ram_gb") or 0,
-                "payload": payload,
-                "created_at": now_iso(),
-            }
-        )
-
-        if node is None:
-            # Unknown MAC: recorded for the operator to map in the panel.
+        if result["status"] == "pending":
             return self.json(
                 {
                     "registered": False,
-                    "message": "Unknown MAC address. Create a node with this MAC in the panel.",
+                    "message": result.get("message"),
                     "mac_address": mac,
                 },
                 status=202,
             )
-
-        node.update(
-            {
-                "cpu_model": data.get("cpu_model") or node.get("cpu_model", ""),
-                "cpu_count": data.get("cpu_count") or node.get("cpu_count", 0),
-                "ram_gb": data.get("ram_gb") or node.get("ram_gb", 0),
-                "last_report_at": now_iso(),
-                "last_boot_at": now_iso(),
-            }
-        )
-
         return self.json(
-            {"registered": True, "node": self._node_summary(node), "config": self._config(node)}
+            {
+                "registered": True,
+                "node": result["node"],
+                "config": result["config"],
+            }
         )
 
     def fetch(self, request, mac: str):
@@ -98,58 +74,5 @@ class BootApiController(Controller):
         node = Node.find_by_mac(normalised)
         if node is None:
             return self.json({"error": "Unknown MAC address."}, status=404)
-        return self.json({"node": self._node_summary(node), "config": self._config(node)})
+        return self.json({"node": NodeConfig.summary(node), "config": NodeConfig.for_node(node)})
 
-    # -- helpers ------------------------------------------------------------
-    @staticmethod
-    def _node_summary(node: Node) -> dict:
-        return {
-            "id": node.id,
-            "name": node.name,
-            "mac_address": node.mac_address,
-            "ip_address": node.ip_address,
-            "status": node.status,
-        }
-
-    @staticmethod
-    def _config(node: Node) -> dict:
-        cluster = node.cluster
-        cluster_payload = None
-        corosync_conf = None
-        if cluster is not None:
-            from resources.app.services.corosync import CorosyncConfigGenerator
-
-            cluster_payload = {
-                "name": cluster.name,
-                "quorum_expected": cluster.quorum_expected,
-                "corosync": cluster.get("corosync_config", {}),
-            }
-            # Generated live from the cluster's current nodes (auto node IDs +
-            # config_version); the node can write this straight to corosync.conf.
-            corosync_conf = CorosyncConfigGenerator().sync(cluster)
-
-        return {
-            "name": node.name,
-            "ip_address": node.ip_address,
-            "netmask": node.netmask,
-            "gateway": node.gateway,
-            "vlan": node.vlan,
-            "dns": node.dns,
-            "bridge": node.bridge,
-            "network": node.get("network_config", {}),
-            "storage": node.get("storage_config", []),
-            "vms": node.get("vm_config", []),
-            "storages": [
-                {
-                    "id": s.storage_id,
-                    "kind": s.kind,
-                    "server": s.server,
-                    "export": s.export,
-                    "reachable": bool(s.reachable),
-                }
-                for s in node.effective_storages()
-            ],
-            "cluster": cluster_payload,
-            "corosync_node_id": node.corosync_node_id,
-            "corosync_conf": corosync_conf,
-        }

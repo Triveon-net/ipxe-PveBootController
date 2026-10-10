@@ -8,10 +8,13 @@ ConditionPathExists=/usr/local/bin/pve-agent.py
 Type=simple
 # Optional overrides (PVE_CTRL, PVE_INTERVAL, ...); see pve-agent.conf.
 EnvironmentFile=-/etc/pve-agent.conf
-# --watch: polls every PVE_INTERVAL seconds (default 5) until the node is
-# accepted, then keeps the configuration applied.
-ExecStart=/usr/bin/python3 /usr/local/bin/pve-agent.py --watch
-Restart=always
+# The agent polls forever by default (every PVE_INTERVAL seconds, default 5)
+# until the node is accepted, then keeps the configuration applied. Use
+# `--once` (or PVE_ONCE=true) to run a single report instead.
+ExecStart=/usr/bin/python3 /usr/local/bin/pve-agent.py
+# The agent normally never exits (it polls forever). Restart it if it is killed
+# or crashes; a clean exit (e.g. the node was rejected) stays stopped.
+Restart=on-failure
 RestartSec=5
 
 [Install]

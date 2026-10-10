@@ -67,6 +67,9 @@ class Config:
 
         self.host = os.environ.get("APP_HOST", "127.0.0.1")
         self.port = int(os.environ.get("APP_PORT", "8000"))
+        # Agent WebSocket runs on the same host/port as HTTP; only the path is
+        # configurable. See core/websocket.py.
+        self.ws_path = os.environ.get("WS_PATH", "/agent")
 
         self.session_lifetime = int(os.environ.get("SESSION_LIFETIME", "120"))
         self.session_cookie = os.environ.get("SESSION_COOKIE", "pve_ctrl_session")

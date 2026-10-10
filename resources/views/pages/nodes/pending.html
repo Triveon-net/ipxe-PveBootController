@@ -30,7 +30,14 @@
             <tbody class="divide-y divide-slate-800">
                 {% for item in pending %}
                 <tr class="transition hover:bg-slate-800/30">
-                    <td class="px-5 py-3 font-mono text-xs text-slate-300">{{ item.mac_address }}</td>
+                    <td class="px-5 py-3 font-mono text-xs text-slate-300">
+                        {{ item.mac_address }}
+                        {% if item.mac_address in online_macs %}
+                        <span class="ml-1 inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300" title="Agent connected (WebSocket)">
+                            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>live
+                        </span>
+                        {% endif %}
+                    </td>
                     <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ item.ip_address or '—' }}</td>
                     <td class="px-5 py-3 text-slate-400">
                         {{ item.cpu_model or '—' }}
@@ -48,7 +55,7 @@
                             </a>
                             <button type="button"
                                     hx-post="{{ url_for('nodes.reject', mac=item.mac_address) }}"
-                                    hx-swap="none"
+                                    hx-target="#app-content"
                                     hx-confirm="Reject {{ item.mac_address }}? It will no longer appear here."
                                     class="inline-flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-rose-500/40 hover:text-rose-300">
                                 <i class="fa-solid fa-ban"></i><span>Reject</span>
@@ -85,13 +92,22 @@
                     <td class="px-5 py-3 font-mono text-xs text-slate-400">{{ item.mac_address }}</td>
                     <td class="px-5 py-3 text-slate-500">{{ item.reason or '—' }}</td>
                     <td class="px-5 py-3 text-xs text-slate-500">{{ item.created_at|datetime }}</td>
-                    <td class="px-5 py-3 text-right">
-                        <button type="button"
-                                hx-post="{{ url_for('nodes.unreject', mac=item.mac_address) }}"
-                                hx-swap="none"
-                                class="inline-flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-700 hover:text-slate-100">
-                            <i class="fa-solid fa-rotate-left"></i><span>Restore</span>
-                        </button>
+                    <td class="px-5 py-3">
+                        <div class="flex items-center justify-end gap-1">
+                            <button type="button"
+                                    hx-post="{{ url_for('nodes.unreject', mac=item.mac_address) }}"
+                                    hx-target="#app-content"
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-slate-700 hover:text-slate-100">
+                                <i class="fa-solid fa-rotate-left"></i><span>Restore</span>
+                            </button>
+                            <button type="button"
+                                    hx-post="{{ url_for('nodes.rejected.destroy', mac=item.mac_address) }}"
+                                    hx-target="#app-content"
+                                    hx-confirm="Delete {{ item.mac_address }} completely? Removes it and its boot reports from the system."
+                                    class="inline-flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-400 transition hover:border-rose-500/40 hover:text-rose-300">
+                                <i class="fa-solid fa-trash"></i><span>Delete</span>
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}

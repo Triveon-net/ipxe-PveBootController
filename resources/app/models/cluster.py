@@ -8,6 +8,7 @@ from core.model import Model
 class Cluster(Model):
     table = "clusters"
     casts = {"corosync_config": "json"}
+    hidden = ("authkey",)
 
     def nodes(self) -> list:
         from resources.app.models.node import Node

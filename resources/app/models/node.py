@@ -24,6 +24,7 @@ class Node(Model):
         "vm_config": "json",
         "network_config": "json",
     }
+    hidden = ("ssh_private_key", "ssh_host_private_key")
 
     @classmethod
     def find_by_mac(cls, mac: str) -> "Node | None":

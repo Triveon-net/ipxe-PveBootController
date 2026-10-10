@@ -7,7 +7,7 @@ from werkzeug.utils import send_file
 from core.exceptions import NotFound
 from resources.app.models.boot_file import BootFile
 from resources.app.services.boot_files import BootFiles, InvalidBootFile
-from resources.controllers.controller import Controller, is_htmx
+from resources.controllers.controller import Controller
 
 
 class BootFilesController(Controller):
@@ -52,8 +52,3 @@ class BootFilesController(Controller):
             conditional=True,  # supports HTTP Range (useful for big images)
             download_name=name,
         )
-
-    def _done(self, request, url: str):
-        if is_htmx(request):
-            return self.htmx_redirect(url)
-        return self.redirect(url)

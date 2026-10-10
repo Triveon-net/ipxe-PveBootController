@@ -35,14 +35,18 @@ def quote_identifier(name: str) -> str:
 
 
 class Database:
-    """Thread-local SQLite connection manager with a tiny query API."""
+    """Thread-local SQLite connection manager with a tiny query API.
+
+    One connection is opened per thread and released with the thread. Nothing
+    is retained globally, so a long-running threaded server cannot accumulate
+    connections (and file descriptors). `close()` closes the current thread's
+    connection and is called after every request by the kernel.
+    """
 
     def __init__(self, path: str | Path, *, timeout: float = 30.0) -> None:
         self.path = str(path)
         self._timeout = timeout
         self._local = threading.local()
-        self._lock = threading.Lock()
-        self._connections: list[sqlite3.Connection] = []
 
     # -- connection handling ------------------------------------------------
     def connection(self) -> sqlite3.Connection:
@@ -60,19 +64,17 @@ class Database:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA busy_timeout = 30000")
             self._local.conn = conn
-            with self._lock:
-                self._connections.append(conn)
         return conn
 
     def close(self) -> None:
-        with self._lock:
-            connections, self._connections = self._connections, []
-        for conn in connections:
+        """Close the current thread's connection, if any."""
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is not None:
             try:
                 conn.close()
             except sqlite3.Error:
                 pass
-        self._local = threading.local()
+            self._local.conn = None
 
     # -- query API ----------------------------------------------------------
     def run(

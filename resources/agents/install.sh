@@ -62,7 +62,7 @@ if have systemctl; then
     echo "install: enabled pve-agent.service (stopped — not started)"
     echo "install: start it with:  systemctl start pve-agent.service"
 else
-    echo "install: systemd not found; run manually:  python3 $BIN --watch"
+    echo "install: systemd not found; run manually:  python3 $BIN   (polls forever)"
 fi
 
 echo "install: done"

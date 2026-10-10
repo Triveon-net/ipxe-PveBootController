@@ -136,6 +136,7 @@ def console() -> int:
     io.line()
     if server is not None:
         io.success(f"Server running at {io._c(server.url, 'cyan')}")
+    io.info(f"Agent WebSocket: {io._c(f'ws://{config.host}:{config.port}{config.ws_path}', 'cyan')}")
     io.line(f"{io._c('env', 'dim')} {config.env}    {io._c('db', 'dim')} {config.database_path}")
     io.info("Type `help` for commands, `exit` to stop and quit.")
 

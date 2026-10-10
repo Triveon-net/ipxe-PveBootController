@@ -87,6 +87,14 @@
                 {% endif %}
             </section>
 
+            {% if node.ssh_public_key %}
+            <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
+                <h2 class="mb-3 text-sm font-medium text-slate-300"><i class="fa-solid fa-key mr-2 text-brand-400"></i>SSH public key</h2>
+                <pre class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-300">{{ node.ssh_public_key }}</pre>
+                <p class="mt-2 text-xs text-slate-600">Private key and host keys are stored by the panel and applied by the agent.</p>
+            </section>
+            {% endif %}
+
             <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-5">
                 <h2 class="mb-4 text-sm font-medium text-slate-300">Boot history</h2>
                 {% if events %}

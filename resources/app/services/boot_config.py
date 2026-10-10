@@ -25,6 +25,7 @@ _VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DEFAULTS: dict[str, Any] = {
     # General
     "controller_url": "",  # empty -> use APP_URL; exposed as ${controller}
+    "files_url": "",  # base URL of the file server; exposed as ${files}
     "next_server": "",  # DHCP option 66 / iPXE next-server
     "boot_file": "boot.ipxe",  # DHCP option 67 (informational)
     # Client network (static IP; ignored when `use_dhcp` is on)
@@ -46,13 +47,15 @@ DEFAULTS: dict[str, Any] = {
     "action": "kernel",  # kernel | chain | exit | shell
     "pass_cmdline_vars": True,  # add pve_ctrl=... to the cmdline
     "chain_url": "",
-    # Uploaded files are referenced as <controller>/bootfiles/<name>.
+    # Files are referenced as <files_url>/<name> when files_url is set, else as
+    # <controller>/bootfiles/<name> (the uploaded files). With a file server set,
+    # empty names fall back to vmlinuz / initrd.img / root.squashfs.
     "kernel_file": "",
     "initrd_file": "",
     "squashfs_file": "",
-    "use_fetch": True,  # add fetch=<squashfs url> to the cmdline
     "kernel_url": "",  # manual override (wins over kernel_file)
     "initrd_url": "",  # manual override (wins over initrd_file)
+    "squashfs_url": "",  # manual override (wins over squashfs_file)
     "kernel_cmdline": "boot=live ${fetch} ip=dhcp",
     "boot_args": "",
     # Timing
@@ -72,8 +75,15 @@ TOGGLES = (
     "set_controller_var",
     "include_comments",
     "pass_cmdline_vars",
-    "use_fetch",
 )
+
+# Conventional Proxmox netboot file names, used when a file server is set but no
+# explicit name was given.
+FILE_DEFAULTS = {
+    "kernel_file": "vmlinuz",
+    "initrd_file": "initrd.img",
+    "squashfs_file": "root.squashfs",
+}
 
 MAC_VAR = "node-mac"
 
@@ -116,6 +126,7 @@ class BootConfig:
         cfg = {**DEFAULTS, **(config or {})}
         iface = _clean(cfg.get("interface")) or "net0"
         controller = _clean(cfg.get("controller_url")) or get_config().url
+        files_base = _clean(cfg.get("files_url")).rstrip("/")
         lines: list[str] = ["#!ipxe"]
 
         if cfg.get("include_comments"):
@@ -124,6 +135,9 @@ class BootConfig:
 
         if cfg.get("set_controller_var"):
             lines.append(f"set controller {controller}")
+
+        if files_base:
+            lines.append(f"set files {files_base}")
 
         if cfg.get("use_dhcp", True):
             lines.append("dhcp")
@@ -166,20 +180,32 @@ class BootConfig:
 
         action = str(cfg.get("action") or "kernel")
         if action == "kernel":
-            def file_url(key: str) -> str:
-                name = _clean(cfg.get(key))
-                return f"{controller}/bootfiles/{name}" if name else ""
+            def file_url(name_key: str, url_key: str, default_name: str) -> str:
+                override = _clean(cfg.get(url_key))
+                name = _clean(cfg.get(name_key)).lstrip("/")
+                if not name and files_base:
+                    name = default_name
+                # A full URL in the name field counts as an override.
+                if not override and "://" in name:
+                    override, name = name, ""
+                if override:
+                    # Normalise URLs that live on the file server to ${files}/<name>.
+                    if files_base and override.startswith(files_base + "/"):
+                        return f"${{files}}/{override[len(files_base) + 1:]}"
+                    return override
+                if not name:
+                    return ""
+                if files_base:
+                    return f"${{files}}/{name}"
+                return f"{controller}/bootfiles/{name}"
 
-            kernel = _clean(cfg.get("kernel_url")) or file_url("kernel_file")
-            initrd = _clean(cfg.get("initrd_url")) or file_url("initrd_file")
-            fetch = file_url("squashfs_file") if cfg.get("use_fetch") else ""
+            kernel = file_url("kernel_file", "kernel_url", FILE_DEFAULTS["kernel_file"])
+            initrd = file_url("initrd_file", "initrd_url", FILE_DEFAULTS["initrd_file"])
+            fetch = file_url("squashfs_file", "squashfs_url", FILE_DEFAULTS["squashfs_file"])
             if kernel:
                 args: list[str] = []
-                if cfg.get("pass_cmdline_vars"):
-                    args.append("pve_ctrl=${controller}")
-                    if capture_mac:
-                        args.append(f"pve_mac=${{{MAC_VAR}}}")
-                cmdline = _clean(cfg.get("kernel_cmdline"))
+                # An empty cmdline falls back to the standard PVE boot line.
+                cmdline = _clean(cfg.get("kernel_cmdline")) or DEFAULTS["kernel_cmdline"]
                 if "${fetch}" in cmdline:
                     cmdline = cmdline.replace("${fetch}", f"fetch={fetch}" if fetch else "")
                     cmdline = " ".join(cmdline.split())
@@ -187,6 +213,10 @@ class BootConfig:
                     cmdline = (cmdline + " " + f"fetch={fetch}").strip()
                 if cmdline:
                     args.append(cmdline)
+                if cfg.get("pass_cmdline_vars"):
+                    args.append("pve_ctrl=${controller}")
+                    if capture_mac:
+                        args.append(f"pve_mac=${{{MAC_VAR}}}")
                 extra = _clean(cfg.get("boot_args"))
                 if extra:
                     args.append(extra)

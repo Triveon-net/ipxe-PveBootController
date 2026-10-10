@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Mapping
 
 from core.context import get_context
@@ -55,8 +56,78 @@ class Controller:
         return redirect(target)
 
     def htmx_redirect(self, url: str) -> Response:
-        """Tell HTMX to perform a client-side redirect."""
+        """Tell HTMX to perform a client-side redirect (full page load)."""
         return make_response("", status=204, headers={"HX-Redirect": url})
+
+    def content_refresh(self, request: Request, url: str) -> Response:
+        """React to a write action without reloading the whole page.
+
+        For HTMX requests the target page's content fragment is rendered and
+        swapped into ``#app-content`` (target/reswap overridden via response
+        headers, URL pushed to history). Flash messages are delivered as an
+        ``app:flash`` client event instead of relying on a page reload, so the
+        sidebar, title and toasts all update in place. Non-HTMX requests fall
+        back to a plain redirect (flash survives in the session).
+        """
+        if not is_htmx(request):
+            return self.redirect(url)
+
+        ctx = get_context()
+        # The session was drained of flashes at the start of this request, so
+        # anything present now was added while handling the write action.
+        pending = ctx.session.take_flashes()
+
+        try:
+            body = self._render_route(request, url)
+        except Exception:
+            # If the target cannot be rendered, fall back to a real redirect so
+            # the user still gets feedback rather than a broken fragment.
+            for category, message in pending:
+                ctx.session.flash(message, category)
+            return self.htmx_redirect(url)
+
+        response = make_response(body, status=200)
+        response.headers["HX-Retarget"] = "#app-content"
+        response.headers["HX-Reswap"] = "innerHTML"
+        response.headers["HX-Push-Url"] = url
+        if pending:
+            response.headers["HX-Trigger"] = json.dumps(
+                {
+                    "app:flash": [
+                        {"category": category, "message": message}
+                        for category, message in pending
+                    ]
+                }
+            )
+        return response
+
+    def _render_route(self, request: Request, url: str) -> str:
+        """Render the content fragment for ``url`` by dispatching an internal
+        GET, reusing the current request context (session, user, CSRF)."""
+        from werkzeug.test import EnvironBuilder
+
+        builder = EnvironBuilder(
+            path=url, method="GET", headers=[("HX-Request", "true")]
+        )
+        target = Request(builder.get_environ())
+        route, args = self.app.router.match(target)
+
+        handler = route.handler
+        if callable(handler):
+            result = handler(target, **args)
+        else:
+            controller_name, method_name = handler.split("@", 1)
+            controller_cls = self.app._resolve_controller(controller_name)
+            controller = controller_cls(self.app)
+            result = getattr(controller, method_name)(target, **args)
+
+        response = self.app._normalise(result)
+        return response.get_data(as_text=True)
+
+    def _done(self, request: Request, url: str) -> Response:
+        """Finish a write action by re-rendering ``url`` in place (HTMX) or
+        redirecting there (plain form submit)."""
+        return self.content_refresh(request, url)
 
     # -- session helpers ----------------------------------------------------
     @property

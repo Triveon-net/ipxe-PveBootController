@@ -36,12 +36,11 @@
 {% macro fileselect(name, label, value, files, hint='') %}
 <div>
     <label class="mb-1 block text-sm text-slate-400" for="{{ name }}">{{ label }}</label>
-    <select id="{{ name }}" name="{{ name }}" class="{{ input_class }}">
-        <option value="">— none —</option>
-        {% for f in files %}
-        <option value="{{ f.name }}" {{ 'selected' if value == f.name else '' }}>{{ f.name }} ({{ f.size_human }})</option>
-        {% endfor %}
-    </select>
+    <input id="{{ name }}" name="{{ name }}" value="{{ value }}" list="{{ name }}-options"
+           placeholder="vmlinuz" autocomplete="off" class="{{ input_class }} font-mono">
+    <datalist id="{{ name }}-options">
+        {% for f in files %}<option value="{{ f.name }}"></option>{% endfor %}
+    </datalist>
     {% if hint %}<p class="mt-1 text-xs text-slate-500">{{ hint }}</p>{% endif %}
 </div>
 {% endmacro %}
@@ -63,7 +62,7 @@
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <form id="boot-form"
-              hx-post="{{ url_for('boot.update') }}" hx-swap="none"
+              hx-post="{{ url_for('boot.update') }}" hx-target="#app-content"
               method="post" action="{{ url_for('boot.update') }}"
               class="space-y-6">
             <input type="hidden" name="_token" value="{{ csrf_token() }}">
@@ -73,6 +72,7 @@
                 <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-sliders mr-2 text-brand-400"></i>General</h2>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {{ field('controller_url', 'Controller URL', values.controller_url, 'http://10.0.0.5:8000', true, 'Exposed to the script as the iPXE variable ${controller}. Empty = APP_URL from .env.') }}
+                    {{ field('files_url', 'File server base URL', values.files_url, 'http://10.0.0.5:8080', true, 'Base URL where the netboot files are served (exposed as ${files}). With this set, empty file names default to vmlinuz, initrd.img and root.squashfs. Empty = serve the files uploaded to this controller at /bootfiles.') }}
                     {{ field('next_server', 'Next server (DHCP option 66)', values.next_server, '10.0.0.5', true, 'IP of the TFTP/PXE server.') }}
                     {{ field('boot_file', 'Boot filename (DHCP option 67)', values.boot_file, 'boot.ipxe', true) }}
                 </div>
@@ -115,16 +115,16 @@
                 </div>
                 {{ toggle('pass_cmdline_vars', 'Pass the controller URL to the kernel cmdline', values.pass_cmdline_vars, 'Adds pve_ctrl=... — the same script works on every server; the image\'s agent detects the MAC itself.') }}
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    {{ fileselect('kernel_file', 'Kernel file (vmlinuz)', values.kernel_file, files) }}
-                    {{ fileselect('initrd_file', 'Initrd file (initrd.img)', values.initrd_file, files) }}
-                    {{ fileselect('squashfs_file', 'Squashfs (root.squashfs)', values.squashfs_file, files) }}
+                    {{ fileselect('kernel_file', 'Kernel file', values.kernel_file, files, 'Name or URL. With a file server ⟶ ${files}/vmlinuz (empty = vmlinuz).') }}
+                    {{ fileselect('initrd_file', 'Initrd file', values.initrd_file, files, 'Name or URL. With a file server ⟶ ${files}/initrd.img (empty = initrd.img).') }}
+                    {{ fileselect('squashfs_file', 'Squashfs / rootfs', values.squashfs_file, files, 'Name or URL, added as fetch=… on the kernel line. With a file server ⟶ ${files}/root.squashfs (empty = root.squashfs).') }}
                 </div>
-                {{ toggle('use_fetch', 'Add fetch=<squashfs> to the cmdline', values.use_fetch, 'Produces: boot=live fetch=http://…/bootfiles/root.squashfs ip=dhcp') }}
                 <div class="grid grid-cols-1 gap-4">
                     {{ field('chain_url', 'Chain URL', values.chain_url, 'http://10.0.0.5/provision.ipxe', true, 'Used by the "chain" action.') }}
-                    {{ field('kernel_url', 'Kernel URL (override)', values.kernel_url, 'http://10.0.0.5/vmlinuz', true, 'Optional — wins over the uploaded kernel file.') }}
-                    {{ field('initrd_url', 'Initrd URL (override)', values.initrd_url, 'http://10.0.0.5/initrd.img', true, 'Optional — wins over the uploaded initrd file.') }}
-                    {{ field('kernel_cmdline', 'Kernel cmdline', values.kernel_cmdline, 'boot=live ${fetch} ip=dhcp', true, '${fetch} is replaced by the squashfs URL.') }}
+                    {{ field('kernel_url', 'Kernel URL (override)', values.kernel_url, 'http://10.0.0.5/vmlinuz', true, 'Optional — wins over the kernel file. URLs under the file server are normalised to ${files}/…') }}
+                    {{ field('initrd_url', 'Initrd URL (override)', values.initrd_url, 'http://10.0.0.5/initrd.img', true, 'Optional — wins over the initrd file.') }}
+                    {{ field('squashfs_url', 'Squashfs URL (override)', values.squashfs_url, 'http://10.0.0.5/root.squashfs', true, 'Optional — wins over the squashfs file. Leave empty to use ${files}/root.squashfs.') }}
+                    {{ field('kernel_cmdline', 'Kernel cmdline', values.kernel_cmdline, 'boot=live ${fetch} ip=dhcp', true, '${fetch} is replaced by the squashfs URL. Empty falls back to boot=live ${fetch} ip=dhcp.') }}
                     {{ field('boot_args', 'Extra boot args', values.boot_args, '', true) }}
                 </div>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -174,8 +174,35 @@
             They are served at <span class="font-mono text-slate-300">{{ base_url() }}/bootfiles/&lt;name&gt;</span> and can be
             selected in the Boot action above (or referenced manually).
         </p>
+
+        <div class="mt-4 rounded-lg border border-brand-500/30 bg-brand-500/5 p-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2 text-sm font-medium text-brand-300">
+                        <i class="fa-solid fa-file-code"></i><span>Generated boot.ipxe</span>
+                    </div>
+                    <p class="mt-1 text-xs text-slate-400">
+                        Written to the boot files on every save, so a static file server / DHCP option 67 keeps serving the
+                        current script. Dynamic URL:
+                        <span class="font-mono text-slate-300">{{ base_url() }}/boot.ipxe</span> · file:
+                        <span class="font-mono text-slate-300">{{ base_url() }}/bootfiles/boot.ipxe</span>
+                    </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                    <a href="{{ base_url() }}/bootfiles/boot.ipxe"
+                       download="boot.ipxe"
+                       class="inline-flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-700 hover:text-white">
+                        <i class="fa-solid fa-download"></i><span>Download boot.ipxe</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <div class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <form method="post" action="{{ url_for('bootfiles.store') }}" enctype="multipart/form-data"
+                  hx-post="{{ url_for('bootfiles.store') }}"
+                  hx-encoding="multipart/form-data"
+                  hx-target="#app-content"
                   class="space-y-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
                 <input type="hidden" name="_token" value="{{ csrf_token() }}">
                 <div>
@@ -218,7 +245,7 @@
                                         <i class="fa-solid fa-copy"></i>
                                     </button>
                                     <button type="button" hx-post="{{ url_for('bootfiles.destroy', file_id=f.id) }}"
-                                            hx-swap="none" hx-confirm="Delete '{{ f.name }}'?"
+                                            hx-target="#app-content" hx-confirm="Delete '{{ f.name }}'?"
                                             class="rounded-lg p-2 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300" title="Delete">
                                         <i class="fa-solid fa-trash"></i>
                                     </button>
@@ -242,7 +269,9 @@
         <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-download mr-2 text-brand-400"></i>Client agent (goes into the node image)</h2>
         <p class="mt-2 max-w-3xl text-sm text-slate-400">
             iPXE only loads your kernel — the agent runs inside the image. It finds its own MAC (the NIC that reaches
-            the controller), reports the hardware and can apply the returned configuration. Pick either variant:
+            the controller), then opens a persistent <strong class="text-slate-300">WebSocket</strong>
+            (<span class="font-mono text-slate-400">ws://&lt;controller-host&gt;{{ config.ws_path }}</span>)
+            and waits for the controller to push its configuration — no polling. Pick either variant:
         </p>
         <div class="mt-4 rounded-lg border border-brand-500/30 bg-brand-500/5 p-4">
             <div class="flex items-center gap-2 text-sm font-medium text-brand-300">

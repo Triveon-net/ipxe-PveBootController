@@ -38,7 +38,7 @@
                             <td class="px-5 py-3 text-right">
                                 <button type="button"
                                         hx-post="{{ url_for('clusters.destroy', cluster_id=cluster.id) }}"
-                                        hx-swap="none"
+                                        hx-target="#app-content"
                                         hx-confirm="Delete cluster '{{ cluster.name }}'?"
                                         class="rounded-lg p-2 text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300"
                                         title="Delete">
@@ -56,7 +56,7 @@
         </div>
 
         <div>
-            <form hx-post="{{ url_for('clusters.store') }}" hx-swap="none"
+            <form hx-post="{{ url_for('clusters.store') }}" hx-target="#app-content"
                   method="post" action="{{ url_for('clusters.store') }}"
                   class="space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5">
                 <h2 class="text-sm font-medium text-slate-300"><i class="fa-solid fa-plus mr-2 text-brand-400"></i>New cluster</h2>

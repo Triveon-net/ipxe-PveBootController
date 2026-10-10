@@ -19,6 +19,23 @@ class Middleware:
         return next_handler(request)
 
 
+class CloseDatabase(Middleware):
+    """Close the request thread's DB connection after every request.
+
+    Prevents file-descriptor leaks on threaded servers (a new thread per
+    request would otherwise leave its SQLite connection open).
+    """
+
+    def __init__(self, db) -> None:
+        self.db = db
+
+    def handle(self, request, next_handler):
+        try:
+            return next_handler(request)
+        finally:
+            self.db.close()
+
+
 class StartSession(Middleware):
     def __init__(self, app) -> None:
         self.app = app

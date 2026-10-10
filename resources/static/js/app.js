@@ -29,6 +29,42 @@
         }, 4500);
     }
 
+    var FLASH_STYLES = {
+        success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+        error: "border-rose-500/30 bg-rose-500/10 text-rose-200",
+        warning: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+        info: "border-sky-500/30 bg-sky-500/10 text-sky-200"
+    };
+    var FLASH_ICONS = {
+        success: "fa-circle-check", error: "fa-circle-exclamation",
+        warning: "fa-triangle-exclamation", info: "fa-circle-info"
+    };
+
+    // Build a toast client-side. `textContent` is used deliberately so a
+    // server-provided message can never inject markup (XSS-safe).
+    function addFlash(category, message) {
+        var container = document.getElementById("flash-container");
+        if (!container || !message) {
+            return;
+        }
+        var el = document.createElement("div");
+        el.className = "pointer-events-auto flex items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg backdrop-blur " +
+            (FLASH_STYLES[category] || FLASH_STYLES.info);
+        el.setAttribute("data-flash", "");
+
+        var icon = document.createElement("i");
+        icon.className = "fa-solid " + (FLASH_ICONS[category] || FLASH_ICONS.info) + " mt-0.5";
+
+        var span = document.createElement("span");
+        span.className = "flex-1";
+        span.textContent = message;
+
+        el.appendChild(icon);
+        el.appendChild(span);
+        container.appendChild(el);
+        dismissFlash(el);
+    }
+
     // The sidebar lives outside #app-content, so HTMX does not re-render it.
     // Keep its active highlight in sync with the current URL ourselves.
     var NAV_ACTIVE = ["bg-brand-500/10", "text-brand-300", "font-medium"];
@@ -98,6 +134,23 @@
         document.body.addEventListener("htmx:historyRestore", function () {
             updateDocumentTitle();
             updateSidebarActive();
+        });
+
+        // Write actions (delete/reject/save/...) return an `app:flash` trigger
+        // instead of reloading the page, so show the toasts in place.
+        document.body.addEventListener("app:flash", function (evt) {
+            var items = evt.detail;
+            if (!items) {
+                return;
+            }
+            if (!Array.isArray(items)) {
+                items = [items];
+            }
+            items.forEach(function (item) {
+                if (item && item.message) {
+                    addFlash(item.category || "info", item.message);
+                }
+            });
         });
     });
 
